@@ -6,32 +6,69 @@ include macros.asm
 .DATA
 ;;
 nombre_conf db "PRAII.CON",00
+clave_capturada        db     09  dup (0)
+usuario_capturado      db     08  dup (0)
+espacio_leido          db     00
+estado                 db     00
+buffer_linea           db     0ff dup (0)
+tam_liena_leida        db     00
+handle_conf            dw     0000
+separador db "------------------------------------",0a,"$"
+fin_ejecucion_programa db " Credenciales erroneas, fin de ejecucion del programa",0a,"$"
+usuario db "mnoguera","$"
+clave db "202101149","$"
+;;VARS HTMl
+;;VARIABLES DE TAMAÑO HTML 
+sz_header		db 	1b 
+tit_cat_sz	db	17 
+style_tb_sz	db	38 
+style_th_sz		db	40 
+close_sty_sz		db	8  
+close_head_sz			db	7  
+body_cat_sz	db  21 
+tam_fecha_html			db	0a  
+tam_hora_html			db	8  
+close_p_sz			db  4  
+op_table_sz		db  7  
+close_tb_sz		db 	8  
+open_tr_sz			db  4  
+tit_ht_sz		db  3e  
+close_tr_sz			db	5	
+open_td_sz			db	4  
+close_td_sz			db	5	
+close_body_sz			db	7  
+close_html_sz			db	7  
+tit_af_sz	db  27 
+body_rep_af_sz  db  2e 
 
-tam_encabezado_html    db     0c
-encabezado_html        db     "<html><body>"
-tam_inicializacion_tabla   db   3e
-inicializacion_tabla   db     '<table border="1"><tr><td>codigo</td><td>descripcion</td></tr>'
-tam_cierre_tabla       db     8
-cierre_tabla           db     "</table>"
-tam_footer_html        db     0e
-footer_html            db     "</body></html>"
-td_html                db     "<td>"
-tdc_html               db     "</td>"
-tr_html                db     "<tr>"
-trc_html               db     "</tr>"
-tk_creds			   db     0e, "[credenciales]"
-tk_nombre			   db     07, "usuario"
-tk_clave			   db     05, "clave"
-tk_comillas 		   db     01,'"'
+;;VARIABLES DE ESTRUCTURA HTML
+encabezado_html        	db	"<!DOCTYPE html><html><head>" 
+tit_Catalogo_html 		db	"<title>Reporte</title>"	
+style_Table_html		db	"<style>table { width: 100%; border-collapse: collapse; }" 
+style_Th_html			db  "th, td {border: 3px solid blue; padding: 8px; text-align: left;}";;
+cierre_style           	db  "</style>"
+cierre_head            	db  "</head>"
+body_Catalogo_html     db  "<body><h1>Catalogo Productos</h1>"
+fecha_html				db	"<p>Fecha: "
+hora_html 				db	"<p>Hora:"
+cierre_p				db	"</p>"
+apertura_table			db 	"<table>"
+cierre_table			db	"</table>"
+apertura_tr				db	"<tr>"
+titulos_html			db	"<th>Código</th><th>Descripcion</th><th>Precio</th><th>Unidades"
+cierre_tr				db	"</tr>"
+apertura_td				db	"<td>"
+cierre_td				db	"</td>"
+cierre_body				db	"</body>"
+cierre_html				db	"</html>"
+cierre_th				db  "</th>"
+;;
+
 ceros          db     2b  dup (0)
 ;; VARIABLES | MEMORIA RAM
 numero           db   05 dup (30)
 ;;
-usac       db    "Universidad de San Carlos de Guatemala",0a,"$"
-facultad   db    "Facultad de Ingenieria",0a,"$"
-curso      db    "Arquitectura de Computadoras y Ensambladores 1",0a,"$"
-nombre     db    "Nombre: Mariano Rac",0a,"$"
-carne      db    "Carnet: 202101149",0a,"$"
+MensajeInicial db "Universidad de San Carlos de Guatemala",0a,"Facultad de Ingenieria",0a,"Arquitectura de Computadoras y Ensambladores 1",0a,"Nombre: Mariano Rac",0a,"Carnet: 202101149",0a,"$" 
 products  db    "(P)roductos",0a,"$"
 ventas     db    "(V)entas",0a,"$"
 herramientas db  "(H)erramientas",0a,"$"
@@ -73,8 +110,22 @@ cod_name    db    21 dup (0)
 cod_price   db    05 dup (0)
 cod_units   db    05 dup (0)
 ; ;; "ESTRUCTURA VENTA"
-cod_prod_ventas    db    05 dup (0)
-cod_units_ventas   db    05 dup (0)
+diaVenta        db 01 dup (0)
+mesVenta        db 01 dup (0)
+anioVenta       dw 00
+horaVenta       db 01 dup (0)
+minutoVenta     db 01 dup (0)
+
+codigoVenta     db 05 dup (0)
+unidadesVenta   db 05 dup (0)
+
+numeroUnidadesVenta   dw 0000
+
+precioTotalVenta    dw 0000
+contadorItemsVenta  db 0
+
+separadorVentas     db "$"
+finalizarVenta      db "fin"
 ;; numéricos
 num_price   dw    0000
 num_units   dw    0000
@@ -82,46 +133,52 @@ num_units   dw    0000
 archivo_prods    db   "PROD.BIN",00
 handle_prods     dw   0000
 ;; archivo productos
-archivo_ventas    db   "VENT.BIN",00
-handle_ventas     dw   0000
+archivoVentas    db   "VENT.BIN",00
+handleVentas     dw   0000
 ;;
 nombre_rep1      db   "CATALG.HTM",00
 handle_reps      dw   0000
-
+;; tokens
+tk_creds               db     0e, "[credenciales]"
+tk_nombre              db     07, "usuario"
+tk_clave               db     05, "clave"
+tk_igual               db     01, "="
+tk_comillas            db     01, '"'
+;;
 
 ;;
 .CODE
 .STARTUP
 ;; CODIGO
 inicio:
-		;;
-		mov AX, 7e7
-		call numAcadena
-		mov BX, 01
-		mov CX, 0005
-		mov DX, offset numero
-		mov AH, 40
-		int 21
-		mov DX, offset nueva_lin
-		mov AH, 09
-		int 21
-		;; ENCABEZADO
-		mov DX, offset usac
-		mov AH, 09
-		int 21
-		mov DX, offset facultad
-		mov AH, 09
-		int 21
-		mov DX, offset curso
-		mov AH, 09
-		int 21
-		mov DX, offset nombre
-		mov AH, 09
-		int 21
-		mov DX, offset carne
-		mov AH, 09
-		int 21
-		;;
+		mPrint nueva_lin
+		mPrint MensajeInicial
+		mprint nueva_lin
+		call validar_acceso
+		mov SI, offset usuario
+		mov DI, offset usuario_capturado
+		inc DI
+		mov CX, 08
+		call cadenas_iguales
+		cmp DL, 0ff
+		je validar_clave_usuario
+		
+		jmp credenciales_inc_fin
+		
+validar_clave_usuario:
+	mov SI, offset clave
+	mov DI, offset clave_capturada
+	inc DI
+	mov CX, 09
+	call cadenas_iguales
+	cmp DL, 0ff
+	je menu_principal
+	jmp credenciales_inc_fin
+credenciales_inc_fin:
+	mPrint nueva_lin
+	mPrint fin_ejecucion_programa
+	call acabar_ejecucion
+
 menu_principal:
 		mov DX, offset nueva_lin
 		mov AH, 09
@@ -270,7 +327,8 @@ aceptar_tam_nom:
 		mov CH, 00
 		mov CL, [DI]
 		inc DI  ;; me posiciono en el contenido del buffer
-copiar_nombre:	mov AL, [DI]
+copiar_nombre:	
+		mov AL, [DI]
 		mov [SI], AL
 		inc SI
 		inc DI
@@ -626,240 +684,211 @@ menu_ventas:
 		je menu_principal
 		cmp AL, 69 ;; insertar venta
 		je ingresar_venta
-		jmp fin
+		
 ingresar_venta:
-	mov DX, offset prompt_ingresar_venta
-			mov AH, 09
-			int 21
-	mPrint nueva_lin
-	jmp pedir_de_nuevo_codigo_ventas
-; ingresar_producto_archivo:
-; 		mov DX, offset titulo_producto
-; 		mov AH, 09
-; 		int 21
-; 		mov DX, offset sub_prod
-; 		mov AH, 09
-; 		int 21
-; 		mov DX, offset nueva_lin
-; 		mov AH, 09
-; 		int 21
-; 		;;; PEDIR CODIGO
-pedir_de_nuevo_codigo_ventas:
-		
-		mov DX, offset prompt_code
-		mov AH, 09
-		int 21
-		mov DX, offset buffer_entrada
-		mov AH, 0a
-		int 21
-		;;; verificar que el tamaño del codigo no sea mayor a 5
-		mov DI, offset buffer_entrada
-		inc DI
-		mov AL, [DI]
-		cmp AL, 00
-		je  pedir_de_nuevo_codigo_ventas
-		cmp AL, 05
-		jb  aceptar_tam_cod_ventas  ;; jb --> jump if below
-		mov DX, offset nueva_lin
-		mov AH, 09
-		int 21
-		jmp pedir_de_nuevo_codigo_ventas
-		;;; mover al campo codigo en la estructura producto
-aceptar_tam_cod_ventas: 
-		mov SI, offset cod_prod_ventas
-		mov DI, offset buffer_entrada
-		inc DI
-		mov CH, 00
-		mov CL, [DI]
-		inc DI  ;; me posiciono en el contenido del buffer
-copiar_codigo_ventas :	
-		mov AL, [DI]
-		mov [SI], AL
-		inc SI
-		inc DI
-		loop copiar_codigo_ventas  ;; restarle 1 a CX, verificar que CX no sea 0, si no es 0 va a la etiqueta, 
-		;;; la cadena ingresada en la estructura
-		;;;
-		mov DX, offset nueva_lin
-		mov AH, 09
-		int 21
-		
-pedir_de_nuevo_unidades_ventas :
-		mov DX, offset prompt_units
-		mov AH, 09
-		int 21
-		mov DX, offset buffer_entrada
-		mov AH, 0a
-		int 21
-		;;; verificar que el tamaño del codigo no sea mayor a 5
-		mov DI, offset buffer_entrada
-		inc DI
-		mov AL, [DI]
-		cmp AL, 00
-		je  pedir_de_nuevo_unidades_ventas 
-		cmp AL, 06  ;; tamaño máximo del campo
-		jb  aceptar_tam_unidades_ventas  ;; jb --> jump if below
-		mov DX, offset nueva_lin
-		mov AH, 09
-		int 21
-		jmp pedir_de_nuevo_unidades_ventas 
-		;;; mover al campo codigo en la estructura producto
-aceptar_tam_unidades_ventas:
-		mov SI, offset cod_units_ventas 
-		mov DI, offset buffer_entrada
-		inc DI
-		mov CH, 00
-		mov CL, [DI]
-		inc DI  ;; me posiciono en el contenido del buffer
-copiar_unidades_ventas :
-		mov AL, [DI]
-		mov [SI], AL
-		inc SI
-		inc DI
-		
-		loop copiar_unidades_ventas   ;; restarle 1 a CX, verificar que CX no sea 0, si no es 0 va a la etiqueta, 
-		;;
-		mov DI, offset cod_units_ventas 
-		call cadenaAnum
-		;; AX -> numero convertido
-		mov [num_units], AX
-		;;
-		mov DI, offset cod_units_ventas 
-		mov CX, 0005
-		call memset
-		;; finalizó pedir datos de ventas
-		;;
-		;;
-		;;
-		;;
-		;; GUARDAR EN ARCHIVO
-		;; probar abrirlo normal
-		mov AL, 02
-		mov AH, 3d
-		mov DX, offset archivo_ventas 
-		int 21
-		;; si no lo cremos
-		jc  crear_archivo_ventas 
-		;; si abre escribimos
-		jmp guardar_handle_ventas 
-crear_archivo_ventas :
-		mov CX, 0000
-		mov DX, offset archivo_ventas 
-		mov AH, 3c
-		int 21
-		;; archivo abierto
-guardar_handle_ventas :
-		;; guardamos handle
-		mov [handle_ventas], AX
-		;; obtener handle
-		mov BX, [handle_ventas]
-		;; vamos al final del archivo
-		mov CX, 00
-		mov DX, 00
-		mov AL, 02
-		mov AH, 42
-		int 21
-		;; escribir el producto en el archivo
-		;; escribí los dos primeros campos
-		;;Escribir fechahora
-		mov CX, 26
-		mov DX, offset cod_prod_ventas 
-		mov AH, 40
-		int 21
-		;; escribo los otros dos
-		mov CX, 0004
-		mov DX, offset num_units
-		mov AH, 40
-		int 21
-		;;limpiar
-		mov DI, offset cod_prod_ventas 
-		mov CX, 0005
-		call clean_mem_var
-		mov DI, offset cod_units_ventas 
-		mov CX, 0005
-		call clean_mem_var
-		;; cerrar archivo
-		mov AH, 3e
-		int 21
-		;;
-		jmp mostrar_ventas_archivo
-		jmp menu_ventas 
-mostrar_ventas_archivo:
-		mov DX, offset nueva_lin
-		mov AH, 09
-		int 21
-		;;
-		mov AL, 02
-		mov AH, 3d
-		mov DX, offset archivo_ventas
-		int 21
-		;;
-		mov [handle_ventas], AX
-		;; leemos
-ciclo_mostrar_ventas:
-		;; puntero cierta posición
-		mov BX, [handle_ventas ]
-		mov CX, 0026     ;; leer 26h bytes
-		mov DX, offset cod_prod_ventas 
-		;;
-		mov AH, 3f
-		int 21
-		;; puntero avanzó
-		mov BX, [handle_ventas]
-		mov CX, 0004
-		mov DX, offset num_units
-		mov AH, 3f
-		int 21
-		;; ¿cuántos bytes leímos?
-		;; si se leyeron 0 bytes entonces se terminó el archivo...
-		cmp AX, 0000
-		je fin_mostrar_ventas 
-		;; ver si es producto válido
-		mov AL, 00
-		cmp [cod_prod_ventas] , AL
-		je ciclo_mostrar_ventas 
-		;; producto en estructura
-		call imprimir_ventas_new
-		jmp ciclo_mostrar_ventas 
-		;;
-fin_mostrar_ventas :
-		jmp menu_ventas
-;;IMPRIMIR NUEVOS PRODS
-; Salida: Impresion de estructura producto
-imprimir_ventas_new:
-    mov DI, offset cod_prod_ventas 
+    mPrint nueva_lin
+    mPrint separador
+    mPrint nueva_lin
+
+    ; Reestablecer el contador de items en 1.
+    mov DL, 0001
+    mov [contadorItemsVenta], DL
+
+    obtener_fecha:
+        ; Obtener la fecha actual
+        mov AH, 2ah
+        int 21
+
+        ; Guardar la fecha
+        mov [diaVenta], DL
+        mov [mesVenta], dh
+        mov [anioVenta], CX
+
+    obtener_hora:
+        ; Obtener la hora actual
+        mov AH, 2ch
+        int 21
+
+        ; Guardar la hora actual
+        mov [horaVenta], CH
+        mov [minutoVenta], CL
+
+    abrir_archivo_ventas:
+        ; Intentar abrir el archivo de productos
+        mov AL, 02
+        mov AH, 3d
+        mov DX, offset archivoVentas
+        int 21
+
+        ; Si no existe, crearlo
+        jc  crear_archivo_ventas
+
+        ; Si existe, guardar el handle
+        jmp guardar_handle_ventas
+
+    crear_archivo_ventas:
+        ; Crear el archivo de ventas
+        mov CX, 0000
+        mov DX, offset archivoVentas
+        mov AH, 3ch
+        int 21
     
-    ciclo_agregar_dolar_final_1_ventas :
-        mov AL, [DI]
-        cmp AL, 00
-        je agregar_dolar_final_1_ventas 
-        inc DI
-        jmp ciclo_agregar_dolar_final_1_ventas 
-    agregar_dolar_final_1_ventas :
-        mov AL, 24
-        mov [DI], AL
+    guardar_handle_ventas:
+        ; Guardar el handle del archivo
+        mov [handleVentas], AX
+        mov BX, [handleVentas]
 
-        mPrint prompt_code
-        mPrint cod_prod_ventas 
+        ; Mover el puntero del archivo al final
+        mov CX, 0000
+        mov DX, 0000
+        mov AL, 02h
+        mov AH, 42h
+        int 21
+
+    escribir_fecha_hora:
+        ; Escribir la fecha y hora en el archivo
+        mov CX, 06h
+        mov DX, offset diaVenta
+        mov AH, 40
+        int 21
+
+        jmp leer_codigo_venta
+
+    solicitar_item:
+        leer_codigo_venta:
+            mPrint nueva_lin
+            mPrint prompt_code
+
+            mov DX, offset buffer_entrada
+            mov AH, 0ah
+            int 21
+
+            ; Verificar longitud del codigo (maximo 4 caracteres y minimo 1 caracter)
+            mov DI, offset buffer_entrada
+            inc DI
+            mov AL, [DI]
+            cmp AL, 00
+            je leer_codigo_venta
+            cmp AL, 04h
+            ja leer_codigo_venta
+
+            ; Verificar si es 'fin'
+            mov SI, offset finalizarVenta
+            mov DI, offset buffer_entrada
+            inc DI ; Saltar el primer byte
+            mov CL, [DI]
+            inc DI ; Saltar el segundo byte
+            call cadenas_iguales
+            cmp DL, 0ff
+            je finalizar_venta
+
+            ; Guardar el codigo del producto
+            mov SI, offset codigoVenta
+            mov DI, offset buffer_entrada
+            inc DI ; Saltar el primer byte
+            mov CH, 00
+            mov CL, [DI] ; Cantidad de bytes leidos
+            inc DI ; Saltar el segundo byte: Bytes leidos
+            call copiar_variable
+
+        leer_unidades_venta:
+            mPrint nueva_lin
+            mPrint prompt_units
+
+            ; Leer las unidades del producto
+            mov DX, offset buffer_entrada
+            mov AH, 0a
+            int 21
+
+            ; Verificar longitud de las unidades (maximo 5 caracteres y minimo 1 caracter)
+            mov DI, offset buffer_entrada
+            inc DI
+            mov AL, [DI]
+            cmp AL, 00
+            je leer_unidades_venta
+            cmp AL, 05h
+            ja leer_unidades_venta
+
+            ; Guardar las unidades del producto
+            mov SI, offset unidadesVenta
+            mov DI, offset buffer_entrada
+            inc DI ; Saltar el primer byte
+            mov CH, 00
+            mov CL, [DI] ; Cantidad de bytes leidos
+            inc DI ; Saltar el segundo byte: Bytes leidos
+            call copiar_variable
+
+            ; Convertir el precio a numero
+            mov DI, offset unidadesVenta
+            call cadenaAnum
+            mov [numeroUnidadesVenta], AX
+
+            ; Limpiar la variable unidadesProducto
+            mov DI, offset unidadesVenta
+            mov CX, 0005
+            call clean_mem_var
+
+            jmp ingresar_nuevo_item
+
+    ingresar_nuevo_item:
+        ; 1. Escribir el codigo del producto
+        mov BX, [handleVentas]
+        mov CX, 0005
+        mov DX, offset codigoVenta
+        mov AH, 40h
+        int 21
+
+        ; 2. Escribir las unidades del producto (Es un numero)
+        mov BX, [handleVentas]
+        mov CX, 0002
+        mov DX, offset numeroUnidadesVenta
+        mov AH, 40h
+        int 21
+        
+        ; Limpiar la variable codigoVenta
+        mov DI, offset codigoVenta
+        mov CX, 0005
+        call clean_mem_var
+
+        ; Limpiar la variable unidadesVenta
+        mov DI, offset unidadesVenta
+        mov CX, 0005
+        call clean_mem_var
+
+        ; Limpiar la variable numeroUnidadesVenta
+        mov DX, 0000
+        mov [numeroUnidadesVenta], DX
+
+        ; Incrementar y comparar el numero de items agregados actualmente
+        ; Maximo de 10 items por venta
+        
         mPrint nueva_lin
-    
-    mov DI, offset cod_units_ventas
-
-    ciclo_agregar_dolar_final_2_ventas:
-        mov AL, [DI]
-        cmp AL, 00
-        je agregar_dolar_final_2_ventas 
-        inc DI
-        jmp ciclo_agregar_dolar_final_2_ventas 
-    agregar_dolar_final_2_ventas :
-        mov AL, 24
-        mov [DI], AL
-
-        mPrint prompt_units
-        mPrint cod_units_ventas
         mPrint nueva_lin
+        
+        mov DL, contadorItemsVenta
+        cmp DL, 000ah
+        je finalizar_venta
 
-    ret
+        inc DL
+        mov [contadorItemsVenta], DL
+        jmp solicitar_item
+
+    finalizar_venta:
+        ; Escribir el separador de ventas
+        mov BX, [handleVentas]
+        mov CX, 0001
+        mov DX, offset separadorVentas
+        mov AH, 40h
+        int 21
+
+        ; Cerrar el archivo
+        mov AH, 3EH
+        int 21
+
+    mPrint nueva_lin
+    mPrint separador
+    mPrint nueva_lin
+    jmp menu_ventas
 ;;
 ;;;VENTAAAAS
 menu_herramientas:
@@ -883,201 +912,377 @@ menu_herramientas:
 		cmp AL, 72 ;; regresar
 		je menu_principal
 		cmp AL, 63 ;; Generar catálogo
-		je generar_catalogo
+		je generar_catalogo_completo
 		jmp fin
-generar_catalogo:
-		mov AH, 3c
-		mov CX, 0000
-		mov DX, offset nombre_rep1
-		int 21
-		mov [handle_reps], AX
-		mov BX, AX
-		mov AH, 40
-		mov CH, 00
-		mov CL, [tam_encabezado_html]
-		mov DX, offset encabezado_html
-		int 21
-		mov BX, [handle_reps]
-		mov AH, 40
-		mov CH, 00
-		mov CL, [tam_inicializacion_tabla]
-		mov DX, offset inicializacion_tabla
-		int 21
-		;;
-		mov AL, 02
-		mov AH, 3d
-		mov DX, offset archivo_prods
-		int 21
-		;;
-		mov [handle_prods], AX
-		;; leemos
-ciclo_mostrar_rep1:
-		;; puntero cierta posición
-		mov BX, [handle_prods]
-		mov CX, 26     ;; leer 26h bytes
-		mov DX, offset cod_prod
-		;;
-		mov AH, 3f
-		int 21
-		;; puntero avanzó
-		mov BX, [handle_prods]
-		mov CX, 0004
-		mov DX, offset num_price
-		mov AH, 3f
-		int 21
-		;; ¿cuántos bytes leímos?
-		;; si se leyeron 0 bytes entonces se terminó el archivo...
-		cmp AX, 00
-		je fin_mostrar
-		;; ver si es producto válido
-		mov AL, 00
-		cmp [cod_prod], AL
-		je ciclo_mostrar_rep1
-		;; producto en estructura
-		call imprimir_estructura_html
-		jmp ciclo_mostrar_rep1
-		;;
-fin_mostrar_rep1:
-		mov BX, [handle_reps]
-		mov AH, 40
-		mov CH, 00
-		mov CL, [tam_cierre_tabla]
-		mov DX, offset cierre_tabla
-		int 21
-		;;
-		mov BX, [handle_reps]
-		mov AH, 40
-		mov CH, 00
-		mov CL, [tam_footer_html]
-		mov DX, offset footer_html
-		int 21
-		;;
-		mov AH, 3e
-		int 21
-		jmp menu_principal
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; imprimir_estructura - ...
-;; ENTRADAS:
-;; SALIDAS:
-;;     o Impresión de estructura
-imprimir_estructura:
-		mov DI, offset cod_name
-		
-ciclo_poner_dolar_1:
-		mov AL, [DI]
-		cmp AL, 00
-		je poner_dolar_1
-		inc DI
-		jmp ciclo_poner_dolar_1
-poner_dolar_1:
-		mov AL, 24  ;; dólar
-		mov [DI], AL
-		;; imprimir normal
-		mov DX, offset cod_name
-		mov AH, 09
-		int 21
-		mov DX, offset nueva_lin
-		mov AH, 09
-		int 21
-		mov AX, [num_price]
-		call numAcadena
-		;; [numero] tengo la cadena convertida
-		mov BX, 0001
-		mov CX, 0005
-		mov DX, offset numero
-		mov AH, 40
-		int 21
-		mov DX, offset nueva_lin
-		mov AH, 09
-		int 21
-		mov DX, offset nueva_lin
-		mov AH, 09
-		int 21
-		ret
+;;CATALOGO
 
-;;; ENTRADA:
-;;    BX -> handle
+generar_catalogo_completo:
+	;;interrumpcion create a file with a handle 
+	mov AH, 3c
+	mov CX, 0000
+	mov DX, offset nombre_rep1
+	int 21
+	;; el file handle se almacena en Ax 
+	mov [handle_reps], AX
+
+	;;<!DOCTYPE html><html><head>" 
+	mov BX, AX  ;; bx es el handle 
+	mov AH, 40
+	mov CH, 00 ;; limpio CH 
+	mov CL, [sz_header]
+	mov DX, offset encabezado_html
+	int 21
+
+	;; <title>Catalogo</title>"
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [tit_cat_sz]
+	mov DX, offset tit_Catalogo_html
+	int 21
+
+	;;<style>table { width: 100%; border-collapse: collapse; }" 
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [style_tb_sz]
+	mov DX, offset style_Table_html
+	int 21
+
+	;;"th, td {border: 1px solid black; padding: 8px; text-align: left;} </style>"
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [style_th_sz]
+	mov DX, offset style_Th_html
+	int 21
+
+	;;cierre_style
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_sty_sz]
+	mov DX, offset cierre_style
+	int 21
+
+	;;"</head>"
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_head_sz]
+	mov DX, offset cierre_head
+	int 21
+
+	;; "<body><h1>Catalogo Completo de Productos</h1>"
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [body_cat_sz]
+	mov DX, offset body_Catalogo_html
+	int 21
+
+	;;abriendo <table>
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [op_table_sz]
+	mov DX, offset apertura_table
+	int 21
+
+	;; <tr> 
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [open_tr_sz]
+	mov DX, offset apertura_tr
+	int 21
+
+	;; "<th>Descripción</th> <th>Código</th> <th>Precio</th> <th>Unidades"
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [tit_ht_sz]
+	mov DX, offset titulos_html
+	int 21
+
+	;;</th>
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, 05
+	mov DX, offset cierre_th
+	int 21
+
+	;; </tr> 
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_tr_sz]
+	mov DX, offset cierre_tr
+	int 21
+	
+	;; OPEN DISK FILE WITH HANDLE 
+	mov AH, 3d
+	mov AL, 02
+	mov DX, offset archivo_prods
+	int 21
+
+	mov [handle_prods], AX
+
+ciclo_mostrar_catalogo:
+	;; READ FROM FILE WITH HANDLE
+	mov BX, [handle_prods]
+	mov CX, 26     ;; leer 26h bytes
+	mov DX, offset cod_prod
+	mov AH, 3f
+	int 21
+	;; puntero avanzó
+	mov BX, [handle_prods]
+	mov CX, 0004
+	mov DX, offset num_price
+	mov AH, 3f
+	int 21
+
+	;; verificar que no sea nulo, si es termina 
+	cmp AX, 00
+	je fin_mostrar_catalogo
+
+	;; ver si es producto válido
+	mov AL, 00
+	cmp [cod_prod], AL
+	je ciclo_mostrar_catalogo
+
+	;; llamar a la sub-rutina 
+	call imprimir_estructura_html
+
+	jmp ciclo_mostrar_catalogo
+	
+
+fin_mostrar_catalogo:
+	;; </table>
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_tb_sz]
+	mov DX, offset cierre_table
+	int 21
+	;; </body>
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_body_sz]
+	mov DX, offset cierre_body
+	int 21
+	;; </html>
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_html_sz]
+	mov DX, offset cierre_html
+	int 21
+
+	;; CLOSE A FILE WITH HANDLE
+	mov AH, 3e
+	int 21
+
+	jmp menu_herramientas
+
 imprimir_estructura_html:
-		mov BX, [handle_reps]
-		mov AH, 40
-		mov CH, 00
-		mov CL, 04
-		mov DX, offset tr_html
-		int 21
-		;;
-		mov BX, [handle_reps]
-		mov AH, 40
-		mov CH, 00
-		mov CL, 04
-		mov DX, offset td_html
-		int 21
-		;;
-		mov DX, offset cod_prod
-		mov SI, 0000
-ciclo_escribir_codigo:
-		mov DI, DX
-		mov AL, [DI]
-		cmp AL, 00
-		je escribir_desc
-		cmp SI, 0006
-		je escribir_desc
-		mov CX, 0001
-		mov BX, [handle_reps]
-		mov AH, 40
-		int 21
-		inc DX
-		inc SI
-		jmp ciclo_escribir_codigo
-escribir_desc:
-		;;
-		mov BX, [handle_reps]
-		mov AH, 40
-		mov CH, 00
-		mov CL, 05
-		mov DX, offset tdc_html
-		int 21
-		;;
-		mov BX, [handle_reps]
-		mov AH, 40
-		mov CH, 00
-		mov CL, 04
-		mov DX, offset td_html
-		int 21
-		;;
-		mov DX, offset cod_name
-		mov SI, 0000
-ciclo_escribir_desc:
-		mov DI, DX
-		mov AL, [DI]
-		cmp AL, 00
-		je cerrar_tags
-		cmp SI, 0026
-		je cerrar_tags
-		mov CX, 0001
-		mov BX, [handle_reps]
-		mov AH, 40
-		int 21
-		inc DX
-		inc SI
-		jmp ciclo_escribir_desc
-		;;
-cerrar_tags:
-		mov BX, [handle_reps]
-		mov AH, 40
-		mov CH, 00
-		mov CL, 05
-		mov DX, offset tdc_html
-		int 21
-		;;
-		mov BX, [handle_reps]
-		mov AH, 40
-		mov CH, 00
-		mov CL, 05
-		mov DX, offset trc_html
-		int 21
-		;;
-		ret
+	;; <tr> 
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [open_tr_sz]
+	mov DX, offset apertura_tr
+	int 21
 
+	;; <td> 
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [open_td_sz]
+	mov DX, offset apertura_td
+	int 21
+
+	;;dx toma el valor del codigo 
+	mov DX, offset cod_prod
+	;;contador que inicia en 0 
+	mov SI, 0000
+
+ciclo_escribir_codigo:
+	mov DI, DX
+	mov AL, [DI]
+	;;valida si no es nulo, si lo es se va a 
+	cmp AL, 00
+	je escribir_descripcion
+	;;valida que la cadena se encuentra llena 
+	cmp SI, 0006
+	je escribir_descripcion
+
+	;;write to file with handle ---> escribir 
+	mov CX, 0001
+	mov BX, [handle_reps]
+	mov AH, 40
+	int 21
+
+	inc DX  
+	inc SI  
+
+	jmp ciclo_escribir_codigo
+
+escribir_descripcion:
+	;; </td>
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_td_sz]
+	mov DX, offset cierre_td
+	int 21
+	;; <td>
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [open_td_sz]
+	mov DX, offset apertura_td
+	int 21
+
+	;; dx toma el valor de la descripcion 
+	mov DX, offset cod_name
+	mov SI, 0000
+
+ciclo_escribir_descripcion:
+	mov DI, DX
+	mov AL, [DI]
+	;;valida si no es nulo, si lo es se va a 
+	cmp AL, 00
+	je escribir_precio
+	;;valida que la cadena se encuentra llena 
+	cmp SI, 0021
+	je escribir_precio
+
+	;;write to file with handle
+	mov CX, 0001
+	mov BX, [handle_reps]
+	mov AH, 40
+	int 21
+
+	inc DX  
+	inc SI  
+	jmp ciclo_escribir_descripcion
+
+escribir_precio:
+	;; </td>
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_td_sz]
+	mov DX, offset cierre_td
+	int 21
+	;; <td>
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [open_td_sz]
+	mov DX, offset apertura_td
+	int 21
+	;; dx toma el valor de precio
+	mov AX, [num_price]
+	call numAcadena
+
+	mov DX, offset numero
+	mov SI, 0000
+
+ciclo_escribir_precio: 
+	mov DI, DX
+	mov AL, [DI]
+	;;valida si no es nulo, si lo es se va a 
+	cmp AL, 00
+	je escribir_unidades
+	;;valida que la cadena se encuentra llena 
+	cmp SI, 0006
+	je escribir_unidades
+
+	;;write to file with handle 
+	mov CX, 0001
+	mov BX, [handle_reps]
+	mov AH, 40
+	int 21
+
+	inc DX  
+	inc SI  
+	jmp ciclo_escribir_precio
+
+escribir_unidades:
+	;; </td>
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_td_sz]
+	mov DX, offset cierre_td
+	int 21
+	;; <td>
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [open_td_sz]
+	mov DX, offset apertura_td
+	int 21
+	;; dx toma el valor de unidades
+	mov AX, [num_units]
+	call numAcadena
+	mov DX, offset numero
+	mov SI, 0000
+
+ciclo_escribir_unidades:
+	mov DI, DX
+	mov AL, [DI]
+	;;valida si no es nulo, si lo es se va a 
+	cmp AL, 00
+	je cerrar_table
+	;;valida que la cadena se encuentra llena 
+	cmp SI, 0006
+	je cerrar_table
+
+	;;write to file with handle ---> esceribir 
+	mov CX, 0001
+	mov BX, [handle_reps]
+	mov AH, 40
+	int 21
+
+	inc DX  
+	inc SI  
+	jmp ciclo_escribir_unidades
+
+cerrar_table:
+	;; </td>
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_td_sz]
+	mov DX, offset cierre_td
+	int 21
+	;; </tr>
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_tr_sz]
+	mov DX, offset cierre_tr
+	int 21
+
+	;;llamada de sub-rutina para hora 
+	;;call retornar_fecha_hora
+
+    ; mov dx, offset dia
+	; mov ah, 9
+    ; int 21h
+
+	ret
+
+;;
+;;
+
+
+;;
 
 ;; cadenaAnum
 ;; ENTRADA:
@@ -1206,7 +1411,185 @@ clean_mem_var:
 		inc DI
 		loop ciclo_clean_var
 	ret
-
+copiar_variable:
+	mov AL, [DI]
+	mov [SI], AL
+	inc SI
+	inc DI
+	loop copiar_variable
+	ret
+validar_acceso:
+		;; abrir archivo de configuración
+		mov AH, 3d
+		mov AL, 00
+		mov DX, offset nombre_conf
+		int 21
+		mov [handle_conf], AX
+		;; analizarlo
+ciclo_lineaXlinea:
+		mov DI, offset buffer_linea
+		mov AL, 00
+		mov [tam_liena_leida], AL
+ciclo_obtener_linea:
+		mov AH, 3f
+		mov BX, [handle_conf]
+		mov CX, 0001
+		mov DX, DI
+		int 21
+		cmp CX, 0000
+		je fin_leer_linea
+		mov AL, [DI]
+		cmp AL, 0a
+		je fin_leer_linea
+		mov AL, [tam_liena_leida]
+		inc AL
+		mov [tam_liena_leida], AL
+		inc DI
+		jmp ciclo_obtener_linea
+fin_leer_linea:
+		mov AL, [tam_liena_leida]
+		mov AL, 00
+		cmp [estado], AL   ;; verificar la cadena credenciales
+		je verificar_cadena_credenciales
+		mov AL, 01
+		cmp [estado], AL   ;; obtener campo
+		je obtener_campo_conf
+		mov AL, 02
+		cmp [estado], AL   ;; obtener campo
+		je obtener_campo_conf
+		jmp retorno_exitoso
+verificar_cadena_credenciales:
+		cmp CX, 0000
+		je retorno_fallido
+		mov CH, 00
+		mov CL, [tk_creds]
+		mov SI, offset tk_creds
+		inc SI
+		mov DI, offset buffer_linea
+		call cadenas_iguales
+		cmp DL, 0ff
+		je si_hay_creds
+		jmp retorno_fallido
+si_hay_creds:
+		mov AL, [estado]
+		inc AL
+		mov [estado], AL
+		jmp ciclo_lineaXlinea
+		;;
+obtener_campo_conf:
+		cmp CX, 0000
+		je retorno_fallido
+		mov CH, 00
+		mov CL, [tk_nombre]
+		mov SI, offset tk_nombre
+		inc SI
+		mov DI, offset buffer_linea
+		call cadenas_iguales
+		cmp DL, 0ff
+		je obtener_valor_usuario
+		;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+		mov CH, 00
+		mov CL, [tk_clave]
+		mov SI, offset tk_clave
+		inc SI
+		mov DI, offset buffer_linea
+		call cadenas_iguales
+		cmp DL, 0ff
+		je obtener_valor_clave
+		jmp retorno_fallido
+obtener_valor_usuario:
+ciclo_espacios1:
+		inc DI
+		mov AL, [DI]
+		cmp AL, 20    ;; ver si es espacio
+		jne ver_si_es_igual
+		inc DI
+		jmp ciclo_espacios1
+ver_si_es_igual:
+		mov CH, 00
+		mov CL, [tk_igual]
+		mov SI, offset tk_igual
+		inc SI
+		call cadenas_iguales
+		cmp DL, 0ff
+		je obtener_valor_cadena_usuario
+		jmp retorno_fallido
+obtener_valor_cadena_usuario:
+ciclo_espacios2:
+		inc DI
+		mov AL, [DI]
+		cmp AL, 20    ;; ver si es espacio
+		jne capturar_usuario
+		inc DI
+		jmp ciclo_espacios2
+capturar_usuario:
+		mov CX, 0008    ;; TAMAÑO DEL USUARIO: 6 caracteres
+		mov SI, offset usuario_capturado
+ciclo_cap_usuario:
+		inc DI
+		inc SI
+		mov AL, [DI]
+		mov [SI], AL
+		loop ciclo_cap_usuario
+		mov AL, [estado]
+		inc AL
+		mov [estado], AL
+		jmp ciclo_lineaXlinea
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,
+obtener_valor_clave:
+ciclo_espacios3:
+		inc DI
+		mov AL, [DI]
+		cmp AL, 20    ;; ver si es espacio
+		jne ver_si_es_igual2
+		inc DI
+		jmp ciclo_espacios3
+ver_si_es_igual2:
+		mov CH, 00
+		mov CL, [tk_igual]
+		mov SI, offset tk_igual
+		inc SI
+		call cadenas_iguales
+		cmp DL, 0ff
+		je obtener_valor_cadena_clave
+		jmp retorno_fallido
+obtener_valor_cadena_clave:
+ciclo_espacios4:
+		inc DI
+		mov AL, [DI]
+		cmp AL, 20    ;; ver si es espacio
+		jne capturar_clave
+		inc DI
+		jmp ciclo_espacios4
+capturar_clave:
+		mov CX, 0009    ;; TAMAÑO DE LA CLAVE: 9 caracteres
+		mov SI, offset clave_capturada
+ciclo_cap_clave:
+		inc DI
+		inc SI
+		mov AL, [DI]
+		mov [SI], AL
+		loop ciclo_cap_clave
+		mov AL, [estado]
+		inc AL
+		mov [estado], AL
+		jmp ciclo_lineaXlinea
+		;; ver si el nombre de campo es "usuario"
+		;;      trabajo con la línea
+		;; comparar nombre
+		;; comparar clave
+		;; si son correctos devolver en DL = 0ff
+		;; si no son correctos devolver en DL = 00
+retorno_fallido:
+		mov DL, 00
+		ret
+retorno_exitoso:
+		mov DL, 0ff
+		ret
+acabar_ejecucion:
+	mov AL,0
+	mov AH, 4CH
+	int 21
 fin:
 .EXIT
 END
