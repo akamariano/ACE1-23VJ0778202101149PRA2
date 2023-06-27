@@ -95,6 +95,7 @@ ingresar_prod    db  "(I)ngresar producto",0a,"$"
 editar_prod      db  "(E)ditar producto",0a,"$"
 borrar_prod      db  "(B)orrar producto",0a,"$"
 prompt_generar_cat db	"Generar (C)atalogo",0a,"$"
+prompt_generar_cat_alfa db "Generar catalogo alfabeticamente (A)",0a,"$"
 regresar      db  "(R)egresar",0a,"$"
 prods_registrados db "Productos registrados:",0a,"$"
 prompt_ventas_codigo db "Ingrese codigo de producto a comprar: ","$"
@@ -144,6 +145,9 @@ handleVentas     dw   0000
 ;;
 nombre_rep1      db   "CATALG.HTM",00
 handle_reps      dw   0000
+handle_abc dw   0000
+nombre_rep_alfa db "ABC.HTM",00
+
 ;; tokens
 tk_creds               db     0e, "[credenciales]"
 tk_nombre              db     07, "usuario"
@@ -151,6 +155,17 @@ tk_clave               db     05, "clave"
 tk_igual               db     01, "="
 tk_comillas            db     01, '"'
 ;;
+;;ALFABETICO
+dia3        db 01 dup (0)
+mes3       db 01 dup (0)
+anio3       dw 00
+hora3      db 01 dup (0)
+minutos3     db 01 dup (0)
+dos_puntos db ":",0a,"$"
+diagonal db "/",0a,"$"
+contador db 00
+letra_actual db 61 
+primeraLetra db 00
 
 ;;
 .CODE
@@ -1107,6 +1122,9 @@ menu_herramientas:
 		mov DX, offset prompt_generar_cat
 		mov AH, 09
 		int 21
+		mov DX, offset prompt_generar_cat_alfa
+		mov AH, 09
+		int 21
 		mov DX, offset prompt
 		mov AH, 09
 		int 21
@@ -1116,6 +1134,8 @@ menu_herramientas:
 		je menu_principal
 		cmp AL, 63 ;; Generar catálogo
 		je generar_catalogo_completo
+		cmp AL, 61 ;; Generar catálogo
+		je generar_rep_abc
 		jmp fin
 ;;CATALOGO
 
@@ -1183,7 +1203,118 @@ generar_catalogo_completo:
 	mov CL, [body_cat_sz]
 	mov DX, offset body_Catalogo_html
 	int 21
+	;; OBTENER FECHA 
+	mov ah, 2a
+	int 21
+	mov [dia3], dl
+	mov [mes3], dh
+	mov [anio3], cx
+	;;OBTENER HORA 
+	mov ah, 2ch
+	int 21h
+	mov [hora3], ch
+	mov [minutos3], cl
 
+	;; <p>Fecha:
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [tam_fecha_html]
+	mov DX, offset fecha_html
+	int 21
+	;; ESCRIBIR DIA	
+	mov AL, [dia3]
+	mov AH, 00 
+	call numAcadena 
+	mov BX, [handle_reps]
+	mov CX, 02
+	mov DX, offset numero
+	inc dx
+	inc dx 
+	inc dx
+	mov AH, 40
+	int 21
+	;; /
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, 01
+	mov DX, offset diagonal
+	int 21
+	;; ESCRIBIR MES	
+	mov AL, [mes3]
+	mov AH, 00 
+	call numAcadena
+	mov BX, [handle_reps]
+	mov CX, 02
+	mov DX, offset numero
+	inc dx
+	inc dx 
+	inc dx
+	mov AH, 40
+	int 21
+	;; /
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, 01
+	mov DX, offset diagonal
+	int 21
+	;; ESCRIBIR ANIO	
+	mov AX, [anio3]
+	call numAcadena
+	mov BX, [handle_reps]
+	mov CX, 04
+	mov DX, offset numero
+	inc dx
+	mov AH, 40
+	int 21
+	;; </p>
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_p_sz]
+	mov DX, offset cierre_p
+	int 21
+
+	;; <p>Hora:
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [tam_hora_html]
+	mov DX, offset hora_html
+	int 21
+	;; ESCRIBIR HORA	
+	mov AL, [hora3]
+	mov AH, 00 
+	call numAcadena 
+	mov BX, [handle_reps]
+	mov CX, 02
+	mov DX, offset numero
+	inc dx
+	inc dx 
+	inc dx
+	mov AH, 40
+	int 21
+	;; : 
+	mov BX, [handle_reps]
+	mov AH, 40
+	mov CH, 00
+	mov CL, 01
+	mov DX, offset dos_puntos
+	int 21
+	;; ESCRIBIR MINUTOS 	
+	mov AL, [minutos3]
+	mov AH, 00 
+	call numAcadena 
+	mov BX, [handle_reps]
+	mov CX, 02
+	mov DX, offset numero
+	inc dx
+	inc dx 
+	inc dx
+	mov AH, 40
+	int 21
 	;;abriendo <table>
 	mov BX, [handle_reps]
 	mov AH, 40
@@ -1483,8 +1614,414 @@ cerrar_table:
 
 ;;
 ;;
-;;REPORTE EXISTENCIAS
+;;REPORTE LFABETICO
+generar_rep_abc:
+	; Crear el archivo
+	mov AH, 3c
+	mov CX, 0000
+	mov DX, offset nombre_rep_alfa
+	int 21
 
+	; Almacenar el file handle
+	mov [handle_abc], AX
+
+
+	; ----------------- ESCRIBIR LA ESTRUCTURA HTML -----------------
+	;;<!DOCTYPE html><html><head>" 
+	mov BX, AX  ;; bx es el handle 
+	mov AH, 40
+	mov CH, 00 ;; limpio CH 
+	mov CL, [sz_header]
+	mov DX, offset encabezado_html
+	int 21
+	;; <title>Reporte</title>"
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [tit_cat_sz]
+	mov DX, offset tit_Catalogo_html
+	int 21
+	;;<style>table { width: 100%; border-collapse: collapse; }" 
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [style_tb_sz]
+	mov DX, offset style_Table_html
+	int 21
+	;;"th, td {border: 1px solid blue; padding: 8px; text-align: left;} </style>"
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [style_th_sz]
+	mov DX, offset style_Th_html
+	int 21
+	;;cierre_style
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_sty_sz]
+	mov DX, offset cierre_style
+	int 21
+	;;"</head>"
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_head_sz]
+	mov DX, offset cierre_head
+	int 21
+	;; <h1>Reporte Alfabetico de Productos</h1>
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [body_cat_sz]
+	mov DX, offset body_Catalogo_html
+	int 21
+	
+	;; OBTENER FECHA 
+	mov ah, 2a
+	int 21
+	mov [dia3], dl
+	mov [mes3], dh
+	mov [anio3], cx
+	;;OBTENER HORA 
+	mov ah, 2ch
+	int 21h
+	mov [hora3], ch
+	mov [minutos3], cl
+
+	;; <p>Fecha:
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [tam_fecha_html]
+	mov DX, offset fecha_html
+	int 21
+	;; ESCRIBIR DIA	
+	mov AL, [dia3]
+	mov AH, 00 
+	call numAcadena 
+	mov BX, [handle_abc]
+	mov CX, 02
+	mov DX, offset numero
+	inc dx
+	inc dx 
+	inc dx
+	mov AH, 40
+	int 21
+	;; /
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, 01
+	mov DX, offset diagonal
+	int 21
+	;; ESCRIBIR MES	
+	mov AL, [mes3]
+	mov AH, 00 
+	call numAcadena
+	mov BX, [handle_abc]
+	mov CX, 02
+	mov DX, offset numero
+	inc dx
+	inc dx 
+	inc dx
+	mov AH, 40
+	int 21
+	;; /
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, 01
+	mov DX, offset diagonal
+	int 21
+	;; ESCRIBIR ANIO	
+	mov AX, [anio3]
+	call numAcadena
+	mov BX, [handle_abc]
+	mov CX, 04
+	mov DX, offset numero
+	inc dx
+	mov AH, 40
+	int 21
+	;; </p>
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_p_sz]
+	mov DX, offset cierre_p
+	int 21
+
+	;; <p>Hora:
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [tam_hora_html]
+	mov DX, offset hora_html
+	int 21
+	;; ESCRIBIR HORA	
+	mov AL, [hora3]
+	mov AH, 00 
+	call numAcadena 
+	mov BX, [handle_abc]
+	mov CX, 02
+	mov DX, offset numero
+	inc dx
+	inc dx 
+	inc dx
+	mov AH, 40
+	int 21
+	;; : 
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, 01
+	mov DX, offset dos_puntos
+	int 21
+	;; ESCRIBIR MINUTOS 	
+	mov AL, [minutos3]
+	mov AH, 00 
+	call numAcadena 
+	mov BX, [handle_abc]
+	mov CX, 02
+	mov DX, offset numero
+	inc dx
+	inc dx 
+	inc dx
+	mov AH, 40
+	int 21
+	;;abriendo <table>
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [op_table_sz]
+	mov DX, offset apertura_table
+	int 21
+	;; <tr> 
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [open_tr_sz]
+	mov DX, offset apertura_tr
+	int 21
+	;; <th>Letra</th><th>Cantidad de Productos
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [tit_af_sz]
+	mov DX, offset titulos_html
+	int 21
+	;;</th>
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, 05
+	mov DX, offset cierre_th
+	int 21
+	;; </tr> 
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_tr_sz]
+	mov DX, offset cierre_tr
+	int 21
+
+	;; Abrir el archivo de productos
+	mov AH, 3d
+	mov AL, 02
+	mov DX, offset archivo_prods
+	int 21
+
+	; Almacenar el file handle
+	mov [handle_prods], AX
+
+;; CICLO 1:
+ciclo_mostrar_rep_alfabetico:
+	;; 1. Leer 26h bytes del archivo de productos
+	mov BX, [handle_prods]
+	mov CX, 26     ;; leer 26h bytes
+	mov DX, offset cod_prod
+	mov AH, 3f
+	int 21
+
+	;; 2. Leer 4h bytes del archivo de productos
+	mov BX, [handle_prods]
+	mov CX, 0004
+	mov DX, offset num_price
+	mov AH, 3f
+	int 21
+
+	;; 3. Verificar que no sea nulo, si es termina
+	cmp AX, 00
+	je escribir_letra_cantidad
+
+	;; 4. Ver si es producto válido
+	mov AL, 00
+	cmp [cod_prod], AL
+	je ciclo_mostrar_rep_alfabetico
+
+	;; 5. Comparar el primer caracter del nombre con la letra actual
+	mov si, offset cod_name
+	mov di, offset letra_actual
+	mov cx, 01h
+	call cadenas_iguales
+	cmp dl, 0ffh
+	je incrementar_contador
+
+	; 5.1 Si no es igual, siguiente iteración
+	jmp ciclo_mostrar_rep_alfabetico
+
+	; 5.2 Si es igual, incrementar contador
+	incrementar_contador:
+		mov al, [contador]
+		inc al
+		mov [contador], al
+		jmp ciclo_mostrar_rep_alfabetico
+
+	jmp ciclo_mostrar_rep_alfabetico
+
+fin_rep_alfabetico:
+	;; </table>
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_tb_sz]
+	mov DX, offset cierre_table
+	int 21
+
+	;; </body>
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_body_sz]
+	mov DX, offset cierre_body
+	int 21
+	;; </html>
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_html_sz]
+	mov DX, offset cierre_html
+	int 21
+
+	;; CLOSE A FILE WITH HANDLE
+	mov AH, 3e
+	int 21
+
+	jmp menu_herramientas
+
+escribir_letra_cantidad:
+	;;<tr> 
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [open_tr_sz]
+	mov DX, offset apertura_tr
+	int 21
+	
+	;; <td> 
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [open_td_sz]
+	mov DX, offset apertura_td
+	int 21
+
+    ;;ESCRIBIR LETRA
+    ;;write to file with handle 
+	mov DX, offset letra_actual
+	mov CX, 0001
+	mov BX, [handle_abc]
+	mov AH, 40
+	int 21
+
+	;; </td>
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_td_sz]
+	mov DX, offset cierre_td
+	int 21h
+
+	;; <td> 
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [open_td_sz]
+	mov DX, offset apertura_td
+	int 21
+
+	;;ESCRIBIR CANTIDAD 
+	; Verificar si no es 0
+	mov AL, [contador] ;; <-- Escribir el valor a verificar si es cero o no
+	cmp AL, 0000
+	je escribir_variable_cero
+	jmp convertir_variable
+
+	escribir_variable_cero:
+		mov al, 30h
+		mov [numero], al
+		mov al, 30h
+		mov [numero + 1], al
+		mov al, 30h
+		mov [numero + 2], al
+		mov al, 30h
+		mov [numero + 3], al
+		mov al, 30h
+		mov [numero + 4], al
+		jmp escribir_variable
+
+	convertir_variable:
+		; Convertir el precio
+		mov AL, [contador]
+		mov AH, 00
+		call numAcadena
+
+	escribir_variable:
+		; Escribir el precio
+		mov bx, [handle_abc]
+		mov cx, 02
+		mov dx, offset numero
+		inc dx
+		inc dx 
+		inc dx
+		mov ah, 40h
+		int 21h
+
+	;; </td>
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_td_sz]
+	mov DX, offset cierre_td
+	int 21
+
+	;; </tr>
+	mov BX, [handle_abc]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_tr_sz]
+	mov DX, offset cierre_tr
+	int 21
+
+    ;comparamos que letra actual sea menor o igual a Z 
+	cmp letra_actual, 7A ;<- Z en ascii 
+	jb menor_igual ;<- jump if less than or equal 
+
+	jmp fin_rep_alfabetico
+
+menor_igual:
+	inc letra_actual ;<- incrementa letra actual, es decir A -> B 
+    ;;inicializamos el contador 
+    mov contador, 00 
+	; Reiniciar apuntador de productos
+	mov al, 00h
+	mov bx, [handle_prods]
+	mov cx, 00h
+	mov dx, 00h
+	mov ah, 42h
+	int 21h
+	;;volvemos al ciclo para cambiar de letra 
+	jmp ciclo_mostrar_rep_alfabetico
 
 ;;
 
