@@ -4,6 +4,7 @@ include macros.asm
 .STACK
 ;; PILA
 .DATA
+titulos_existencias_html			db	"<th>Codigo</th><th>Descripcion</th><th>Precio",0a,"$"
 ;;
 nombre_conf db "PRAII.CON",00
 clave_capturada        db     09  dup (0)
@@ -13,7 +14,7 @@ estado                 db     00
 buffer_linea           db     0ff dup (0)
 tam_liena_leida        db     00
 handle_conf            dw     0000
-separador db "------------------------------------",0a,"$"
+; separador db "------------------------------------",0a,"$"
 fin_ejecucion_programa db " Credenciales erroneas, fin de ejecucion del programa",0a,"$"
 usuario db "mnoguera","$"
 clave db "202101149","$"
@@ -96,6 +97,8 @@ editar_prod      db  "(E)ditar producto",0a,"$"
 borrar_prod      db  "(B)orrar producto",0a,"$"
 prompt_generar_cat db	"Generar (C)atalogo",0a,"$"
 prompt_generar_cat_alfa db "Generar catalogo alfabeticamente (A)",0a,"$"
+prompt_generar_cat_sin_existencias db "Generar catalogo sin existencias (S)",0a,"$"
+prompt_rep_ventas db "Generar reporte de ventas (v)",0a,"$"
 regresar      db  "(R)egresar",0a,"$"
 prods_registrados db "Productos registrados:",0a,"$"
 prompt_ventas_codigo db "Ingrese codigo de producto a comprar: ","$"
@@ -111,28 +114,60 @@ cod_prod    db    05 dup (0)
 cod_name    db    21 dup (0)
 cod_price   db    05 dup (0)
 cod_units   db    05 dup (0)
-; ;; "ESTRUCTURA VENTA"
-diaVenta        db 01 dup (0)
-mesVenta        db 01 dup (0)
-anioVenta       dw 00
-horaVenta       db 01 dup (0)
-minutoVenta     db 01 dup (0)
+; Variables de venta
+    punteroItems    dw 0000h
 
-codigoVenta             db 05 dup (0)
-descripcionVenta        db 21 dup (0)
-numeroPrecioVenta       dw 0000
-numeroCantidadVenta     dw 0000
+    diaVenta        db 01 dup (0)
+    mesVenta        db 01 dup (0)
+    yearVenta       dw 00
+    horaVenta       db 01 dup (0)
+    minutoVenta     db 01 dup (0)
+    
+    codeVentatemp     db 05 dup (0)
+    unidadesVenta           db 05 dup (0)    
+    
+    bytesItems db 46 dup (0)
+    dir_item dw 0000h
+    
+    codeVenta             db 05 dup (0)
+    descripcionVenta        db 21 dup (0)
+    numeroPrecioVenta       dw 0000
+    numeroCantidadVenta     dw 0000
 
-codigoVentaTemporal     db 05 dup (0)
-unidadesVenta           db 05 dup (0)    
+    numUnitsVenta   dw 0000
+    numeroMonto           dw 0000
+    numeroMontoTotal      dw 0000
 
-numeroUnidadesVenta   dw 0000
-numeroMonto           dw 0000
-numeroMontoTotal      dw 0000
+    contadorItemsVenta  db 0
+    separadorVentas     db "$"
+    finalizarVenta      db "fin"
 
-contadorItemsVenta  db 0
-separadorVentas     db "$"
-finalizarVenta      db "fin"
+; Variables de reporte de ventas
+txtFecha db "Fecha: "
+    txtfechasz equ $-txtFecha
+
+    txtMonto db "Monto: "
+    txtMontoSize equ $-txtMonto
+
+    txtUltimasVentas     db  "Ultimas ventas: ", 0ah
+    txtUltimasVentasSize equ $-txtUltimasVentas
+
+    txtMayorMonto db "Venta con mayor monto: ", 0ah
+    txtMayorMontoSize equ $-txtMayorMonto
+
+    txtMenorMonto db "Venta con menor monto: ", 0ah
+    txtMenorMontoSize equ $-txtMenorMonto
+
+    fechaMayorVenta      db 06h dup (0)
+    fechaMenorVenta      db 06h dup (0)
+
+    montoMayorVenta      dw 0000
+    montoMenorVenta      dw 0000
+
+    cantidadVentas       dw 0000
+
+    offsetReporteVentas   dw 0000
+
 ;; numéricos
 num_price   dw    0000
 num_units   dw    0000
@@ -141,12 +176,30 @@ archivo_prods    db   "PROD.BIN",00
 handle_prods     dw   0000
 ;; archivo productos
 archivoVentas    db   "VENT.BIN",00
-handleVentas     dw   0000
+handle_ventas     dw   0000
 ;;
 nombre_rep1      db   "CATALG.HTM",00
 handle_reps      dw   0000
 handle_abc dw   0000
 nombre_rep_alfa db "ABC.HTM",00
+nombre_rep_sin_exis     db   "FALTA.HTM", 00
+handle_rep_sinexis      dw   0000
+handle_rep_ventas  dw   0000
+pgReporteVentas         db "REP.TXT", 00
+separador       db  "|=================================================|", 0d, 0a, "$"
+separadorSize   equ $-separador
+msgReporteVentas db "Reporte de ventas", 0d, 0a, "$"
+
+separadorSimple     db  "|-------------------------------------------------|", 0d, 0a, "$"
+separadorSimpleSize equ $-separadorSimple
+espacioBlanco   db  " "
+horaActual       db "00:00:00"
+horaActualSize   equ $-horaActual
+diaActual        db 01 dup (0)
+mesActual        db 01 dup (0)
+anioActual       dw 00
+separadorFecha   db "/", 00
+separadorHora    db ":", 00
 
 ;; tokens
 tk_creds               db     0e, "[credenciales]"
@@ -711,13 +764,17 @@ ingresar_venta:
     mPrint separador
     mPrint nueva_lin
 
-    ; Reestablecer el contador de items en 1.
-    mov dl, 0001
+    ; Reestablecer el contador de items en 0.
+    mov dl, 0000
     mov [contadorItemsVenta], dl
 
     ; Reestablecer el contador de monto total en 0.
     mov dx, 0000
     mov [numeroMontoTotal], dx
+    
+    ; Reestablecer el puntero de items
+    mov dx, 0000
+    mov [punteroItems], dx
 
     obtener_fecha:
         ; Obtener la fecha actual
@@ -727,7 +784,7 @@ ingresar_venta:
         ; Guardar la fecha
         mov [diaVenta], dl
         mov [mesVenta], dh
-        mov [anioVenta], cx
+        mov [yearVenta], cx
 
     obtener_hora:
         ; Obtener la hora actual
@@ -760,8 +817,8 @@ ingresar_venta:
     
     guardar_handle_ventas:
         ; Guardar el handle del archivo
-        mov [handleVentas], ax
-        mov bx, [handleVentas]
+        mov [handle_ventas], ax
+        mov bx, [handle_ventas]
 
         ; Mover el puntero del archivo al final
         mov cx, 0000
@@ -769,15 +826,6 @@ ingresar_venta:
         mov al, 02h
         mov ah, 42h
         int 21h
-
-    escribir_fecha_hora:
-        ; Escribir la fecha y hora en el archivo
-        mov cx, 06h
-        mov dx, offset diaVenta
-        mov ah, 40
-        int 21h
-
-        jmp leer_codigo_venta
 
     solicitar_item:
         ; Reiniciar puntero temporal
@@ -794,7 +842,7 @@ ingresar_venta:
             mov ah, 0ah
             int 21h
 
-            ; Verificar longitud del codigo (maximo 4 caracteres y minimo 1 caracter)
+            
             mov di, offset buffer_entrada
             inc di
             mov al, [di]
@@ -813,13 +861,13 @@ ingresar_venta:
             cmp dl, 0ff
             je finalizar_venta
 
-            ; Guardar el codigo del producto
-            mov si, offset codigoVentaTemporal
+            
+            mov si, offset codeVentatemp
             mov di, offset buffer_entrada
             inc di ; Saltar el primer byte
             mov ch, 00
-            mov cl, [di] ; Cantidad de bytes leidos
-            inc di ; Saltar el segundo byte: Bytes leidos
+            mov cl, [di] 
+            inc di 
             call copiar_variable
 
             ; Abrir el archivo de productos
@@ -838,7 +886,7 @@ ingresar_venta:
             ; Puntero en el código del producto
             mov bx, [handle_prods]
             mov cx, 26h
-            mov dx, offset codigoVenta
+            mov dx, offset codeVenta
             mov ah, 3f
             int 21h
 
@@ -855,12 +903,12 @@ ingresar_venta:
 
             ; Verificar si es un producto válido
             mov al, 00
-            cmp [codigoVenta], al
+            cmp [codeVenta], al
             je ciclo_encontrar_producto_venta
 
             ; Verificar el codigo con el codigo solicitado
-            mov si, offset codigoVentaTemporal
-            mov di, offset codigoVenta
+            mov si, offset codeVentatemp
+            mov di, offset codeVenta
             mov cx, 0005
             call cadenas_iguales
             cmp dl, 0ff
@@ -908,19 +956,19 @@ ingresar_venta:
             inc di ; Saltar el segundo byte: Bytes leidos
             call copiar_variable
 
-            ; Convertir el precio a numero
+            ; Convertir las unidades a numero
             mov di, offset unidadesVenta
             call cadenaAnum
-            mov [numeroUnidadesVenta], ax
+            mov [numUnitsVenta], ax
 
             ; Limpiar la variable unidadesProducto
             mov di, offset unidadesVenta
             mov cx, 0005
-            call memset
+            call clean_mem_var
 
     verificar_existencias_disponibles:
         mov ax, [numeroCantidadVenta]
-        cmp ax, [numeroUnidadesVenta]
+        cmp ax, [numUnitsVenta]
         jl sin_existencias_disponibles
         jmp ubicar_producto
     
@@ -937,43 +985,43 @@ ingresar_venta:
         int 21h
         mov [handle_prods], ax
 
-    ciclo_ubicar_producto:
-        mov bx, [handle_prods]
-        mov cx, 26h
-        mov dx, offset codigoVenta
-        mov ah, 3f
-        int 21h
+        ciclo_ubicar_producto:
+            mov bx, [handle_prods]
+            mov cx, 26h
+            mov dx, offset codeVenta
+            mov ah, 3f
+            int 21h
 
-        ; Puntero en el precio del producto
-        mov bx, [handle_prods]
-        mov cx, 04h
-        mov dx, offset numeroPrecioVenta
-        mov ah, 3f
-        int 21h
+            ; Puntero en el precio del producto
+            mov bx, [handle_prods]
+            mov cx, 04h
+            mov dx, offset numeroPrecioVenta
+            mov ah, 3f
+            int 21h
 
-        ; Determinar si se terminó el archivo
-        cmp ax, 0000
-        je finalizar_venta
+            ; Determinar si se terminó el archivo
+            cmp ax, 0000
+            je finalizar_venta
 
-        ; Operaciones de puntero
-        mov dx, [puntero_temp]
-        add dx, 2ah
-        mov [puntero_temp], dx
+            ; Operaciones de puntero
+            mov dx, [puntero_temp]
+            add dx, 2ah
+            mov [puntero_temp], dx
 
-        ; Verificar si es un producto válido
-        mov al, 00
-        cmp [codigoVenta], al
-        je ciclo_ubicar_producto
+            ; Verificar si es un producto válido
+            mov al, 00
+            cmp [codeVenta], al
+            je ciclo_ubicar_producto
 
-        ; Verificar el codigo con el codigo solicitado
-        mov si, offset codigoVentaTemporal
-        mov di, offset codigoVenta
-        mov cx, 0005
-        call cadenas_iguales
-        cmp dl, 0ff
+            ; Verificar el codigo con el codigo solicitado
+            mov si, offset codeVentatemp
+            mov di, offset codeVenta
+            mov cx, 0005
+            call cadenas_iguales
+            cmp dl, 0ff
 
-        je restar_existencias_producto
-        jmp ciclo_ubicar_producto
+            je restar_existencias_producto
+            jmp ciclo_ubicar_producto
     
     restar_existencias_producto:
         ; Posicionar puntero para el offset de la interrupcion
@@ -989,12 +1037,12 @@ ingresar_venta:
 
         ; Restar las unidades vendidas
         mov ax, [numeroCantidadVenta]
-        sub ax, [numeroUnidadesVenta]
+        sub ax, [numUnitsVenta]
         mov [numeroCantidadVenta], ax
 
         ; Escribir el nuevo contenido con las unidades restadas
         mov cx, 2ah
-        mov dx, offset codigoVenta
+        mov dx, offset codeVenta
         mov ah, 40h
         int 21h
 
@@ -1006,7 +1054,7 @@ ingresar_venta:
     calcular_nuevo_monto:
         ; Multiplicacion
         mov ax, [numeroPrecioVenta]
-        mul numeroUnidadesVenta         ; ax = ax * numeroUnidadesVenta
+        mul numUnitsVenta         ; ax = ax * numUnitsVenta
         mov [numeroMonto], ax
 
         ; Suma a monto total
@@ -1022,7 +1070,7 @@ ingresar_venta:
         mPrint nueva_lin
         mov bx, 0001
         mov cx, 0005
-        mov dx, offset numAcadena
+        mov dx, offset numero
         mov ah, 40h
         int 21h
         mPrint nueva_lin
@@ -1030,46 +1078,71 @@ ingresar_venta:
         jmp escribir_nuevo_item
 
     escribir_nuevo_item:
-        ; 1. Escribir el codigo del producto
-        mov bx, [handleVentas]
-        mov cx, 0005
-        mov dx, offset codigoVenta
-        mov ah, 40h
-        int 21h
 
-        ; 2. Escribir las unidades del producto (Es un numero)
-        mov bx, [handleVentas]
-        mov cx, 0002
-        mov dx, offset numeroUnidadesVenta
-        mov ah, 40h
-        int 21h
         
-        ; Limpiar la variable codigoVenta y descripcionVenta
-        mov di, offset codigoVenta
+        mov ah, 0000h
+        mov al, 7h
+        mov bh, 0000h
+        mov bl, [contadorItemsVenta]
+        mul bx
+        mov [punteroItems], ax
+        
+        ; 1. Obtener la direccion para escribir el item
+        ; dir_item = offset bytesItems + punteroItems
+        mov cx, offset bytesItems
+        mov bx, [punteroItems]
+        add cx, bx
+        mov [dir_item], cx
+
+        ; 2. Copiar el codigo del item 
+        mov si, [dir_item]
+        mov di, offset codeVentatemp
+        mov ch, 00
+        mov cl, 0005
+        copiar_codigo_item:
+            mov al, [di]
+            mov [si], al
+            inc si
+            inc di
+            loop copiar_codigo_item
+        
+        
+        mov di, offset numUnitsVenta
+        mov ch, 00
+        mov cl, 0004
+        copiar_unidades_item:
+            mov al, [di]
+            mov [si], al
+            inc si
+            inc di
+            loop copiar_unidades_item
+        
+
+        ; Limpiar la variable codeVenta y descripcionVenta
+        mov di, offset codeVenta
         mov cx, 0026h
-        call memset
+        call clean_mem_var
 
         ; Limpiar la variable unidadesVenta
         mov di, offset unidadesVenta
         mov cx, 0005
-        call memset
+        call clean_mem_var
 
-        ; Limpiar la variable numeroUnidadesVenta
+        ; Limpiar la variable numUnitsVenta
         mov dx, 0000
-        mov [numeroUnidadesVenta], dx
+        mov [numUnitsVenta], dx
 
         ; Limpiar la variable numeroMonto
         mov dx, 0000
-        mov [numeroMonto], dx
+        mov [numeroMonto], dx      
 
-        ; Incrementar y comparar el numero de items agregados actualmente
-        ; Maximo de 10 items por venta
+        
         
         mPrint nueva_lin
         mPrint nueva_lin
         
         mov dl, contadorItemsVenta
-        cmp dl, 000ah
+        cmp dl, 0009h
         je finalizar_venta
 
         inc dl
@@ -1082,22 +1155,38 @@ ingresar_venta:
         mov ah, 3eh
         int 21h
 
+        
+        mov bx, [handle_ventas]
+        mov cx, 06h
+        mov dx, offset diaVenta
+        mov ah, 40
+        int 21h
+
+        ; Escribir los items de la venta
+        mov bx, [handle_ventas]
+        mov cx, 46h
+        mov dx, offset bytesItems
+        mov ah, 40h
+        int 21h
+
         ; Escribir el monto total de la venta
-        mov bx, [handleVentas]
+        mov bx, [handle_ventas]
         mov cx, 0002
         mov dx, offset numeroMontoTotal
         mov ah, 40h
         int 21h
 
-        ; Escribir el separador de ventas
-        mov bx, [handleVentas]
-        mov cx, 0001
-        mov dx, offset separadorVentas
-        mov ah, 40h
-        int 21h
+        
+        mov dx, 0000
+        mov [dir_item], dx
 
-        ; Cerrar el archivo de ventas
-        mov bx, [handleVentas]
+       
+        mov di, offset bytesItems
+        mov cx, 0046h
+        call clean_mem_var
+
+        
+        mov bx, [handle_ventas]
         mov ah, 3eh
         int 21h
 
@@ -1106,7 +1195,731 @@ ingresar_venta:
     mPrint nueva_lin
     jmp menu_ventas
 
+; REPORTE DE VENTAS
+rep_ventas:
+mPrint nueva_lin
+    mPrint separador
+    mPrint nueva_lin
 
+    ; Crear el archivo de registro de ventas
+    mov cx, 0000
+    mov dx, offset pgReporteVentas
+    mov ah, 3ch
+    int 21h
+
+    ; Guardar el handle del archivo
+    mov [handle_rep_ventas], ax
+    mov bx, [handle_rep_ventas]
+
+    ; Escribir la fecha y hora del reporte
+    call escribir_fecha_hora_reporte_txt
+
+    ; Escribir el separador
+    mov cx, separadorSize
+    dec cx
+    mov dx, offset separador
+    mov ah, 40h
+    int 21h
+
+    ; Escribir apartado de ultimas 5 ventas
+    mov cx, txtUltimasVentasSize
+    mov dx, offset txtUltimasVentas
+    mov ah, 40h
+    int 21h
+
+    ; Escribir nueva linea
+    mov cx, 2h
+    mov dx, offset nueva_lin
+    mov ah, 40h
+    int 21h
+
+    ; Abrir el archivo de ventas
+    mov cx, 0000
+    mov dx, offset archivoVentas
+    mov al, 02h
+    mov ah, 3dh
+    int 21h
+
+    ; Guardar el handle del archivo
+    mov [handle_ventas], ax
+    mov bx, [handle_ventas]
+
+    ; Reiniciar el contador de ventas
+    mov ax, 0000
+    mov [cantidadVentas], ax
+
+    ; Leer el archivo de ventas
+    ; 1. Contar la cantidad de ventas
+    ; 2. Guardar los datos de la venta mayor y menor
+    ciclo_1_ventas:
+        ; Puntero en la fecha de la venta	
+        mov bx, [handle_ventas]
+        mov cx, 6h
+        mov dx, offset diaVenta
+        mov ah, 3fh
+        int 21h
+
+        ; Puntero en los items de la venta
+        mov bx, [handle_ventas]
+        mov cx, 46h
+        mov dx, offset bytesItems
+        mov ah, 3fh
+        int 21h
+
+        ; Puntero en el total de la venta
+        mov bx, [handle_ventas]
+        mov cx, 2h
+        mov dx, offset numeroMontoTotal
+        mov ah, 3fh
+        int 21h
+
+        ; Determinar si se terminó el archivo
+        cmp ax, 0000
+        je ciclo_1_ventas_fin
+
+        ; Aumentar el contador de ventas
+        mov ax, [cantidadVentas]
+        inc ax
+        mov [cantidadVentas], ax
+
+        ; Determinar si es la primera venta
+        cmp ax, 0001
+        je primera_venta_obtenida
+
+        ; Determinar si es la venta mayor
+        comparacion_venta_mayor:
+            mov ax, [numeroMontoTotal]
+            cmp ax, [montoMayorVenta]
+            jg venta_mayor_obtenida
+
+        ; Determinar si es la venta menor
+        comparacion_venta_menor:
+            mov ax, [numeroMontoTotal]
+            cmp ax, [montoMenorVenta]
+            jl venta_menor_obtenida
+        
+        ; Continuar con el ciclo
+        jmp ciclo_1_ventas_continuar
+
+        primera_venta_obtenida:
+            mov ax, [numeroMontoTotal]
+            mov [montoMayorVenta], ax
+            
+            mov si, offset fechaMayorVenta
+            mov di, offset diaVenta
+            mov cx, 6h
+            call copiar_variable
+
+            mov si, offset fechaMenorVenta
+            mov di, offset diaVenta
+            mov cx, 6h
+            call copiar_variable
+
+            mov ax, [numeroMontoTotal]
+            mov [montoMenorVenta], ax
+            jmp ciclo_1_ventas_continuar
+        
+        ; Si es la venta mayor, guardar los datos
+        venta_mayor_obtenida:
+            mov si, offset fechaMayorVenta
+            mov di, offset diaVenta
+            mov cx, 6h
+            call copiar_variable
+
+            mov ax, [numeroMontoTotal]
+            mov [montoMayorVenta], ax
+
+            jmp comparacion_venta_menor
+
+        ; Si es la venta menor, guardar los datos
+        venta_menor_obtenida:
+            mov si, offset fechaMenorVenta
+            mov di, offset diaVenta
+            mov cx, 6h
+            call copiar_variable
+
+            mov ax, [numeroMontoTotal]
+            mov [montoMenorVenta], ax
+
+            jmp ciclo_1_ventas_continuar
+        
+        ; Leer el siguiente registro
+        ciclo_1_ventas_continuar:
+            jmp ciclo_1_ventas
+        
+    ciclo_1_ventas_fin:
+
+   ;5 ventas
+    mov ax, [cantidadVentas]
+    cmp ax, 0005
+    jle offset_todas_las_ventas
+
+    ; 2. Si hay mas de 5 ventas, mostrar las ultimas 5
+    jmp offset_ultimas_ventas
+
+    offset_todas_las_ventas:
+        mov ax, 0000h
+        mov [offsetReporteVentas], ax
+        jmp mostrar_ventas
+
+    offset_ultimas_ventas:
+        ; Calculo de offset para mostrar las ultimas 5 ventas
+        ; 1. CantidadDeVentas - 5
+        mov ax, [cantidadVentas]
+        sub ax, 0005
+        mov [offsetReporteVentas], ax
+        
+        ; 2. Multiplicar por 4Eh (tamaño de cada venta)
+        mov ax, [offsetReporteVentas]
+        mov bx, 4Eh
+        mul bx
+        mov [offsetReporteVentas], ax
+
+        jmp mostrar_ventas
+
+    mostrar_ventas:
+        ;puntero del archivo con el offset calculado
+        mov al, 00h
+        mov bx, [handle_ventas]
+        mov cx, [offsetReporteVentas]
+        mov dx, 0000h
+        mov ah, 42h
+        int 21h
+
+        ciclo_mostrar_ventas:
+            ; Puntero en la fecha de la venta	
+            mov bx, [handle_ventas]
+            mov cx, 6h
+            mov dx, offset diaVenta
+            mov ah, 3fh
+            int 21h
+
+            ; Puntero en los items de la venta
+            mov bx, [handle_ventas]
+            mov cx, 46h
+            mov dx, offset bytesItems
+            mov ah, 3fh
+            int 21h
+
+            ; Puntero en el total de la venta
+            mov bx, [handle_ventas]
+            mov cx, 2h
+            mov dx, offset numeroMontoTotal
+            mov ah, 3fh
+            int 21h
+
+            ; Determinar si se terminó el archivo
+            cmp ax, 0000
+            je ciclo_mostrar_ventas_fin
+
+            ; ESCRIBIR VENTA
+
+            
+            mov bx, [handle_rep_ventas]
+            mov cx, separadorSimpleSize
+            mov dx, offset separadorSimple
+            dec cx
+            mov ah, 40h
+            int 21h
+
+            ; 1. Escribir la fecha de la venta
+            reporte_ventas_escribir_fecha:
+                call escribir_fecha_txt
+            
+            ; 2. Escribir el monto de la venta
+            reporte_ventas_escribir_monto:
+                ; Escribir apartado de monto
+                mov cx, txtMontoSize
+                mov dx, offset txtMonto
+                mov ah, 40h
+                int 21h
+
+                
+                mov ah, 00h
+                mov ax, [numeroMontoTotal]
+                call numAcadena
+
+                
+                mov bx, [handle_rep_ventas]
+                mov cx, 05h
+                mov dx, offset numero
+                mov ah, 40h
+                int 21h
+
+                
+                mov cx, 2h
+                mov dx, offset nueva_lin
+                mov ah, 40h
+                int 21h
+            
+            
+            jmp ciclo_mostrar_ventas
+
+        ciclo_mostrar_ventas_fin:
+            
+            mov bx, [handle_rep_ventas]
+            mov cx, separadorSize
+            mov dx, offset separador
+            dec cx
+            mov ah, 40h
+            int 21h
+
+    escribir_venta_mayor:
+        
+        mov bx, [handle_rep_ventas]
+        mov cx, txtMayorMontoSize
+        mov dx, offset txtMayorMonto
+        mov ah, 40h
+        int 21h
+
+       
+        mov cx, txtMontoSize
+        mov dx, offset txtMonto
+        mov ah, 40h
+        int 21h
+
+        
+        mov ah, 00h
+        mov ax, [montoMayorVenta]
+        call numAcadena
+
+        
+        mov bx, [handle_rep_ventas]
+        mov cx, 05h
+        mov dx, offset numero
+        mov ah, 40h
+        int 21h
+
+        
+        mov cx, 2h
+        mov dx, offset nueva_lin
+        mov ah, 40h
+        int 21h
+
+        mov si, offset diaVenta
+        mov di, offset fechaMayorVenta
+        mov cx, 06h
+        call copiar_variable
+        
+        call escribir_fecha_txt
+        
+        
+        mov cx, 2h
+        mov dx, offset nueva_lin
+        mov ah, 40h
+        int 21h
+
+        
+        mov bx, [handle_rep_ventas]
+        mov cx, separadorSize
+        mov dx, offset separador
+        dec cx
+        mov ah, 40h
+        int 21h
+
+    escribir_venta_menor:
+        
+        mov bx, [handle_rep_ventas]
+        mov cx, txtMenorMontoSize
+        mov dx, offset txtMenorMonto
+        mov ah, 40h
+        int 21h
+
+        
+        mov cx, txtMontoSize
+        mov dx, offset txtMonto
+        mov ah, 40h
+        int 21h
+
+        
+        mov ah, 00h
+        mov ax, [montoMenorVenta]
+        call numAcadena
+
+        
+        mov bx, [handle_rep_ventas]
+        mov cx, 05h
+        mov dx, offset numero
+        mov ah, 40h
+        int 21h
+
+       
+        mov cx, 2h
+        mov dx, offset nueva_lin
+        mov ah, 40h
+        int 21h
+
+        mov si, offset diaVenta
+        mov di, offset fechaMenorVenta
+        mov cx, 06h
+        call copiar_variable
+        
+        call escribir_fecha_txt
+        
+        
+        mov cx, 2h
+        mov dx, offset nueva_lin
+        mov ah, 40h
+        int 21h
+
+        
+        mov bx, [handle_rep_ventas]
+        mov cx, separadorSize
+        mov dx, offset separador
+        dec cx
+        mov ah, 40h
+        int 21h
+
+    call reiniciar_variables_ventas
+
+    
+    mov bx, [handle_rep_ventas]
+    mov ah, 3eh
+    int 21h
+
+    
+    mov bx, [handle_ventas]
+    mov ah, 3eh
+    int 21
+
+    mPrint msgReporteVentas
+    jmp menu_herramientas
+escribir_fecha_hora_reporte_txt:
+    
+    escribir_fecha_reporte_txt:
+        
+        mov bx, [handle_rep_ventas]
+        mov cx, txtfechasz
+        mov dx, offset txtFecha
+        mov ah, 40h
+        int 21h
+
+        
+        mov ah, 2ah
+        int 21h
+
+        
+        mov [diaActual], dl
+        mov [mesActual], dh
+        mov [anioActual], cx
+
+        
+        mov ah, 00h
+        mov al, [diaActual]
+        call numAcadena
+        
+        
+        mov bx, [handle_rep_ventas]
+        mov cx, 02h
+        mov dx, offset numero
+        inc dx
+        inc dx
+        inc dx
+        mov ah, 40h
+        int 21
+
+        
+        mov bx, [handle_rep_ventas]
+        mov cx, 01h
+        mov dx, offset separadorFecha
+        mov ah, 40h
+        int 21
+
+        
+        mov ah, 00h
+        mov al, [mesActual]
+        call numAcadena
+
+        
+        mov bx, [handle_rep_ventas]
+        mov cx, 02h
+        mov dx, offset numero
+        inc dx
+        inc dx
+        inc dx
+        mov ah, 40h
+        int 21
+
+        
+        mov bx, [handle_rep_ventas]
+        mov cx, 01h
+        mov dx, offset separadorFecha
+        mov ah, 40h
+        int 21
+
+        
+        mov ah, 00h
+        mov ax, [anioActual]
+        call numAcadena
+
+        
+        mov bx, [handle_rep_ventas]
+        mov cx, 04h
+        mov dx, offset numero
+        inc dx
+        mov ah, 40h
+        int 21
+
+        
+        mov bx, [handle_rep_ventas]
+        mov cx, 01h
+        mov dx, offset espacioBlanco
+        mov ah, 40h
+        int 21
+
+    
+    escribir_hora_reporte_txt:
+        call convertir_hora_ascii
+        
+       
+        mov bx, [handle_rep_ventas]
+        mov cx, 8
+        mov dx, offset horaActual
+        mov ah, 40h
+        int 21
+
+        
+        mov bx, [handle_rep_ventas]
+        mov cx, 02h
+        mov dx, offset nueva_lin
+        mov ah, 40h
+        int 21
+
+    ret
+
+
+
+escribir_fecha_txt:
+    ; Escribir apartado de fecha
+    mov bx, [handle_rep_ventas]
+    mov cx, txtfechasz
+    mov dx, offset txtFecha
+    mov ah, 40h
+    int 21h
+
+    ; Convertir el dia
+    mov ah, 00h
+    mov al, [diaVenta]
+    call numAcadena
+    
+    ; Escribir el dia
+    mov bx, [handle_rep_ventas]
+    mov cx, 02h
+    mov dx, offset numero
+    inc dx
+    inc dx
+    inc dx
+    mov ah, 40h
+    int 21h
+
+   
+    mov bx, [handle_rep_ventas]
+    mov cx, 01h
+    mov dx, offset separadorFecha
+    mov ah, 40h
+    int 21h
+
+    
+    mov ah, 00h
+    mov al, [mesVenta]
+    call numAcadena
+
+    
+    mov bx, [handle_rep_ventas]
+    mov cx, 02h
+    mov dx, offset numero
+    inc dx
+    inc dx
+    inc dx
+    mov ah, 40h
+    int 21h
+
+    
+    mov bx, [handle_rep_ventas]
+    mov cx, 01h
+    mov dx, offset separadorFecha
+    mov ah, 40h
+    int 21h
+
+    
+    mov ah, 00h
+    mov ax, [yearVenta]
+    call numAcadena
+
+    
+    mov bx, [handle_rep_ventas]
+    mov cx, 04h
+    mov dx, offset numero
+    inc dx
+    mov ah, 40h
+    int 21h
+
+    
+    mov bx, [handle_rep_ventas]
+    mov cx, 01h
+    mov dx, offset espacioBlanco
+    mov ah, 40h
+    int 21h
+
+    
+    mov ah, 00h
+    mov al, [horaVenta]
+    call numAcadena
+
+    
+    mov bx, [handle_rep_ventas]
+    mov cx, 02h
+    mov dx, offset numero
+    inc dx
+    inc dx
+    inc dx
+    mov ah, 40h
+    int 21h
+
+  
+    mov bx, [handle_rep_ventas]
+    mov cx, 01h
+    mov dx, offset separadorHora
+    mov ah, 40h
+    int 21h
+
+   
+    mov ah, 00h
+    mov al, [minutoVenta]
+    call numAcadena
+
+    
+    mov bx, [handle_rep_ventas]
+    mov cx, 02h
+    mov dx, offset numero
+    inc dx
+    inc dx
+    inc dx
+    mov ah, 40h
+    int 21h
+    
+   
+    mov cx, 2h
+    mov dx, offset nueva_lin
+    mov ah, 40h
+    int 21h
+
+    ret
+
+
+reiniciar_variables_ventas:
+    ; Limpiar las variables de fechas (Registro y Reporte)
+    mov di, offset diaVenta
+    mov cx, 0006
+    call clean_mem_var
+
+    mov di, offset fechaMayorVenta
+    mov cx, 0006
+    call clean_mem_var
+
+    mov di, offset fechaMenorVenta
+    mov cx, 0006
+    call clean_mem_var
+
+    mov di, offset codeVentatemp
+    mov cx, 0005h
+    call clean_mem_var
+
+    
+    mov di, offset unidadesVenta
+    mov cx, 0005
+    call clean_mem_var
+    
+    
+    mov di, offset codeVenta
+    mov cx, 0026h
+    call clean_mem_var
+
+    
+    mov dx, 0000
+    mov [numUnitsVenta], dx
+
+    
+    mov dx, 0000
+    mov [numeroMonto], dx
+
+    
+    mov di, offset montoMayorVenta
+    mov cx, 0002
+    call clean_mem_var
+
+    mov di, offset montoMenorVenta
+    mov cx, 0002
+    call clean_mem_var
+
+    
+    mov di, offset cantidadVentas
+    mov cx, 0002
+    call clean_mem_var
+
+    ret
+
+convertir_hora_ascii:
+    mov ah, 2ch
+    int 21h
+    mov al, ch
+
+    mov bh, 0
+    mov bl, 0
+    decenas:
+        cmp al, 0ah
+        jl unidades
+        sub al, 0ah
+        inc bh
+        jmp decenas
+    unidades:
+        mov bl, al
+        
+    add bh, 30h
+    add bl, 30h
+
+    mov [horaActual], bh
+    mov [horaActual + 1], bl
+
+    mov [horaActual + 2], 3a 
+
+    
+    mov al, cl
+    mov bh, 0
+    mov bl, 0
+    decenas_1:
+        cmp al, 0ah
+        jl unidades_1
+        sub al, 0ah
+        inc bh
+        jmp decenas_1
+    unidades_1:
+        mov bl, al
+        
+    add bh, 30h
+    add bl, 30h
+    mov [horaActual + 3], bh
+    mov [horaActual + 4], bl
+
+    mov [horaActual + 5], 3a 
+    mov al, dh
+    mov bh, 0
+    mov bl, 0
+    decenas_2:
+        cmp al, 0ah
+        jl unidades_2
+        sub al, 0ah
+        inc bh
+        jmp decenas_2
+    unidades_2:
+        mov bl, al
+        
+    add bh, 30h
+    add bl, 30h
+    mov [horaActual + 6], bh
+    mov [horaActual + 7], bl
+
+    ret
 ;;
 ;;;VENTAAAAS
 menu_herramientas:
@@ -1125,6 +1938,12 @@ menu_herramientas:
 		mov DX, offset prompt_generar_cat_alfa
 		mov AH, 09
 		int 21
+		mov DX, offset prompt_generar_cat_sin_existencias
+		mov AH, 09
+		int 21
+		mov DX, offset prompt_rep_ventas
+		mov AH, 09
+		int 21
 		mov DX, offset prompt
 		mov AH, 09
 		int 21
@@ -1134,8 +1953,12 @@ menu_herramientas:
 		je menu_principal
 		cmp AL, 63 ;; Generar catálogo
 		je generar_catalogo_completo
-		cmp AL, 61 ;; Generar catálogo
+		cmp AL, 61 ;; Generar abc
 		je generar_rep_abc
+		cmp AL, 73 ;; Generar falta
+		je generar_rep_sin_exis
+		cmp AL, 76 ;; Generar ventas
+		je rep_ventas
 		jmp fin
 ;;CATALOGO
 
@@ -1260,7 +2083,7 @@ generar_catalogo_completo:
 	mov CL, 01
 	mov DX, offset diagonal
 	int 21
-	;; ESCRIBIR ANIO	
+	
 	mov AX, [anio3]
 	call numAcadena
 	mov BX, [handle_reps]
@@ -1364,7 +2187,7 @@ generar_catalogo_completo:
 	mov [handle_prods], AX
 
 ciclo_mostrar_catalogo:
-	;; READ FROM FILE WITH HANDLE
+	
 	mov BX, [handle_prods]
 	mov CX, 26     ;; leer 26h bytes
 	mov DX, offset cod_prod
@@ -1377,16 +2200,16 @@ ciclo_mostrar_catalogo:
 	mov AH, 3f
 	int 21
 
-	;; verificar que no sea nulo, si es termina 
+	
 	cmp AX, 00
 	je fin_mostrar_catalogo
 
-	;; ver si es producto válido
+	
 	mov AL, 00
 	cmp [cod_prod], AL
 	je ciclo_mostrar_catalogo
 
-	;; llamar a la sub-rutina 
+	
 	call imprimir_estructura_html
 
 	jmp ciclo_mostrar_catalogo
@@ -1446,14 +2269,14 @@ imprimir_estructura_html:
 ciclo_escribir_codigo:
 	mov DI, DX
 	mov AL, [DI]
-	;;valida si no es nulo, si lo es se va a 
+	
 	cmp AL, 00
 	je escribir_descripcion
-	;;valida que la cadena se encuentra llena 
+	 
 	cmp SI, 0006
 	je escribir_descripcion
 
-	;;write to file with handle ---> escribir 
+	
 	mov CX, 0001
 	mov BX, [handle_reps]
 	mov AH, 40
@@ -1487,10 +2310,10 @@ escribir_descripcion:
 ciclo_escribir_descripcion:
 	mov DI, DX
 	mov AL, [DI]
-	;;valida si no es nulo, si lo es se va a 
+	
 	cmp AL, 00
 	je escribir_precio
-	;;valida que la cadena se encuentra llena 
+	
 	cmp SI, 0021
 	je escribir_precio
 
@@ -1603,18 +2426,13 @@ cerrar_table:
 	mov DX, offset cierre_tr
 	int 21
 
-	;;llamada de sub-rutina para hora 
-	;;call retornar_fecha_hora
-
-    ; mov dx, offset dia
-	; mov ah, 9
-    ; int 21h
+	
 
 	ret
 
 ;;
 ;;
-;;REPORTE LFABETICO
+;;REPORTE ALFABETICO
 generar_rep_abc:
 	; Crear el archivo
 	mov AH, 3c
@@ -1626,8 +2444,7 @@ generar_rep_abc:
 	mov [handle_abc], AX
 
 
-	; ----------------- ESCRIBIR LA ESTRUCTURA HTML -----------------
-	;;<!DOCTYPE html><html><head>" 
+	
 	mov BX, AX  ;; bx es el handle 
 	mov AH, 40
 	mov CH, 00 ;; limpio CH 
@@ -1834,32 +2651,32 @@ generar_rep_abc:
 	; Almacenar el file handle
 	mov [handle_prods], AX
 
-;; CICLO 1:
+
 ciclo_mostrar_rep_alfabetico:
-	;; 1. Leer 26h bytes del archivo de productos
+	
 	mov BX, [handle_prods]
 	mov CX, 26     ;; leer 26h bytes
 	mov DX, offset cod_prod
 	mov AH, 3f
 	int 21
 
-	;; 2. Leer 4h bytes del archivo de productos
+	
 	mov BX, [handle_prods]
 	mov CX, 0004
 	mov DX, offset num_price
 	mov AH, 3f
 	int 21
 
-	;; 3. Verificar que no sea nulo, si es termina
+	
 	cmp AX, 00
 	je escribir_letra_cantidad
 
-	;; 4. Ver si es producto válido
+	
 	mov AL, 00
 	cmp [cod_prod], AL
 	je ciclo_mostrar_rep_alfabetico
 
-	;; 5. Comparar el primer caracter del nombre con la letra actual
+	
 	mov si, offset cod_name
 	mov di, offset letra_actual
 	mov cx, 01h
@@ -1867,10 +2684,10 @@ ciclo_mostrar_rep_alfabetico:
 	cmp dl, 0ffh
 	je incrementar_contador
 
-	; 5.1 Si no es igual, siguiente iteración
+	
 	jmp ciclo_mostrar_rep_alfabetico
 
-	; 5.2 Si es igual, incrementar contador
+	
 	incrementar_contador:
 		mov al, [contador]
 		inc al
@@ -1926,8 +2743,8 @@ escribir_letra_cantidad:
 	mov DX, offset apertura_td
 	int 21
 
-    ;;ESCRIBIR LETRA
-    ;;write to file with handle 
+    ;; LETRA
+    
 	mov DX, offset letra_actual
 	mov CX, 0001
 	mov BX, [handle_abc]
@@ -1950,9 +2767,9 @@ escribir_letra_cantidad:
 	mov DX, offset apertura_td
 	int 21
 
-	;;ESCRIBIR CANTIDAD 
+	
 	; Verificar si no es 0
-	mov AL, [contador] ;; <-- Escribir el valor a verificar si es cero o no
+	mov AL, [contador] 
 	cmp AL, 0000
 	je escribir_variable_cero
 	jmp convertir_variable
@@ -2003,28 +2820,461 @@ escribir_letra_cantidad:
 	mov DX, offset cierre_tr
 	int 21
 
-    ;comparamos que letra actual sea menor o igual a Z 
-	cmp letra_actual, 7A ;<- Z en ascii 
-	jb menor_igual ;<- jump if less than or equal 
+    ;cmenor o igual a Z 
+	cmp letra_actual, 7A ;z 
+	jb menor_igual 
 
 	jmp fin_rep_alfabetico
 
 menor_igual:
-	inc letra_actual ;<- incrementa letra actual, es decir A -> B 
-    ;;inicializamos el contador 
+	inc letra_actual 
     mov contador, 00 
-	; Reiniciar apuntador de productos
+	;apuntador de productos
 	mov al, 00h
 	mov bx, [handle_prods]
 	mov cx, 00h
 	mov dx, 00h
 	mov ah, 42h
 	int 21h
-	;;volvemos al ciclo para cambiar de letra 
+	;; cambiar de letra 
 	jmp ciclo_mostrar_rep_alfabetico
 
-;;
+;;SIN EXISTENCIAS
 
+generar_rep_sin_exis:
+	
+	mov AH, 3c
+	mov CX, 0000
+	mov DX, offset nombre_rep_sin_exis
+	int 21
+	;; el file handle se almacena en Ax 
+	mov [handle_rep_sinexis], AX
+
+	
+	;;<!DOCTYPE html><html><head>" 
+	mov BX, AX  ;; bx es el handle 
+	mov AH, 40
+	mov CH, 00 ;; limpio CH 
+	mov CL, [sz_header]
+	mov DX, offset encabezado_html
+	int 21
+
+	;; <title>Catalogo</title>"
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [tit_cat_sz]
+	mov DX, offset tit_Catalogo_html
+	int 21
+
+	;;<style>table { width: 100%; border-collapse: collapse; }" 
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [style_tb_sz]
+	mov DX, offset style_Table_html
+	int 21
+
+	;;"th, td {border: 1px solid black; padding: 8px; text-align: left;} </style>"
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [style_th_sz]
+	mov DX, offset style_Th_html
+	int 21
+
+	;;cierre_style
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_sty_sz]
+	mov DX, offset cierre_style
+	int 21
+
+	;;"</head>"
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_head_sz]
+	mov DX, offset cierre_head
+	int 21
+
+	;; "<body><h1>Catalogo Completo de Productos</h1>"
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [body_cat_sz]
+	mov DX, offset body_Catalogo_html
+	int 21
+	;; OBTENER FECHA 
+	mov ah, 2a
+	int 21
+	mov [dia3], dl
+	mov [mes3], dh
+	mov [anio3], cx
+	;;OBTENER HORA 
+	mov ah, 2ch
+	int 21h
+	mov [hora3], ch
+	mov [minutos3], cl
+
+	;; <p>Fecha:
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [tam_fecha_html]
+	mov DX, offset fecha_html
+	int 21
+	;; ESCRIBIR DIA	
+	mov AL, [dia3]
+	mov AH, 00 
+	call numAcadena 
+	mov BX, [handle_rep_sinexis]
+	mov CX, 02
+	mov DX, offset numero
+	inc dx
+	inc dx 
+	inc dx
+	mov AH, 40
+	int 21
+	;; /
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, 01
+	mov DX, offset diagonal
+	int 21
+	;; ESCRIBIR MES	
+	mov AL, [mes3]
+	mov AH, 00 
+	call numAcadena
+	mov BX, [handle_rep_sinexis]
+	mov CX, 02
+	mov DX, offset numero
+	inc dx
+	inc dx 
+	inc dx
+	mov AH, 40
+	int 21
+	;; /
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, 01
+	mov DX, offset diagonal
+	int 21
+	;; year	
+	mov AX, [anio3]
+	call numAcadena
+	mov BX, [handle_rep_sinexis]
+	mov CX, 04
+	mov DX, offset numero
+	inc dx
+	mov AH, 40
+	int 21
+	;; </p>
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_p_sz]
+	mov DX, offset cierre_p
+	int 21
+
+	;; <p>Hora:
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [tam_hora_html]
+	mov DX, offset hora_html
+	int 21
+	;; hr	
+	mov AL, [hora3]
+	mov AH, 00 
+	call numAcadena 
+	mov BX, [handle_rep_sinexis]
+	mov CX, 02
+	mov DX, offset numero
+	inc dx
+	inc dx 
+	inc dx
+	mov AH, 40
+	int 21
+	;; : 
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, 01
+	mov DX, offset dos_puntos
+	int 21
+	;; min	
+	mov AL, [minutos3]
+	mov AH, 00 
+	call numAcadena 
+	mov BX, [handle_rep_sinexis]
+	mov CX, 02
+	mov DX, offset numero
+	inc dx
+	inc dx 
+	inc dx
+	mov AH, 40
+	int 21
+	;; <table>
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [op_table_sz]
+	mov DX, offset apertura_table
+	int 21
+
+	;; <tr> 
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [open_tr_sz]
+	mov DX, offset apertura_tr
+	int 21
+
+	;; "<th>Descripción</th> <th>Código</th> <th>Precio</th> <th>Unidades"
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [tit_ht_sz]
+	mov DX, offset titulos_html
+	int 21
+
+	;;</th>
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, 05
+	mov DX, offset cierre_th
+	int 21
+
+	;; </tr> 
+	mov BX, [handle_rep_sinexis]
+	mov AH, 40
+	mov CH, 00
+	mov CL, [close_tr_sz]
+	mov DX, offset cierre_tr
+	int 21
+	
+	;; OPEN DISK FILE WITH HANDLE 
+	mov AH, 3d
+	mov AL, 02
+	mov DX, offset archivo_prods
+	int 21
+
+	mov [handle_prods], AX
+
+		ciclo_mostrar_existentes:
+			
+			mov BX, [handle_prods]
+			mov CX, 26     ;; leer 26h bytes
+			mov DX, offset cod_prod
+			mov AH, 3f
+			int 21
+			;; puntero avanzó
+			mov BX, [handle_prods]
+			mov CX, 0004
+			mov DX, offset num_price
+			mov AH, 3f
+			int 21
+
+			
+			cmp AX, 0000
+			je fin_mostrar_existentes
+
+			
+			mov AL, 00
+			cmp [cod_prod], AL
+			je ciclo_mostrar_existentes						
+
+					
+			mov DI, offset cod_name
+			;; dx toma el valor de unidades
+			mov ax, [num_units]
+			cmp ax, 0000
+			je ir_a_imprimir_esctructura_html			
+
+			jmp ciclo_mostrar_existentes
+
+		ir_a_imprimir_esctructura_html:
+			;; llamar a la sub-rutina 
+			call imprimir_estructura_html_existencias
+			
+		fin_mostrar_existentes:
+			;; </table>
+			mov BX, [handle_rep_sinexis]
+			mov AH, 40
+			mov CH, 00
+			mov CL, [close_tb_sz]
+			mov DX, offset cierre_table
+			int 21
+			;; </body>
+			mov BX, [handle_rep_sinexis]
+			mov AH, 40
+			mov CH, 00
+			mov CL, [close_body_sz]
+			mov DX, offset cierre_body
+			int 21
+			;; </html>
+			mov BX, [handle_rep_sinexis]
+			mov AH, 40
+			mov CH, 00
+			mov CL, [close_html_sz]
+			mov DX, offset cierre_html
+			int 21
+
+			;; CLOSE A FILE WITH HANDLE
+			mov AH, 3e
+			int 21
+
+			jmp menu_herramientas
+
+		imprimir_estructura_html_existencias:
+			;; <tr> 
+			mov BX, [handle_rep_sinexis]
+			mov AH, 40
+			mov CH, 00
+			mov CL, [open_tr_sz]
+			mov DX, offset apertura_tr
+			int 21
+
+			;; <td> 
+			mov BX, [handle_rep_sinexis]
+			mov AH, 40
+			mov CH, 00
+			mov CL, [open_td_sz]
+			mov DX, offset apertura_td
+			int 21
+
+			 
+			mov DX, offset cod_prod
+			
+			mov SI, 0000
+
+		ciclo_escribir_codigo_existencias:
+			mov DI, DX
+			mov AL, [DI]
+			
+			cmp AL, 00
+			je escribir_descripcion_existencias
+			
+			cmp SI, 0006
+			je escribir_descripcion_existencias
+
+			
+			mov CX, 0001
+			mov BX, [handle_rep_sinexis]
+			mov AH, 40
+			int 21
+
+			inc DX  
+			inc SI   
+
+			jmp ciclo_escribir_codigo_existencias
+
+		escribir_descripcion_existencias:
+			;; </td>
+			mov BX, [handle_reps]
+			mov AH, 40
+			mov CH, 00
+			mov CL, [close_td_sz]
+			mov DX, offset cierre_td
+			int 21
+			;; <td>
+			mov BX, [handle_rep_sinexis]
+			mov AH, 40
+			mov CH, 00
+			mov CL, [open_td_sz]
+			mov DX, offset apertura_td
+			int 21
+
+			;descripc
+			mov DX, offset cod_name
+			mov SI, 0000
+
+		ciclo_escribir_descripcion_existencias:
+			mov DI, DX
+			mov AL, [DI]
+			;nulo
+			cmp AL, 00
+			je escribir_precio_existencias
+			;llena
+			cmp SI, 0021
+			je escribir_precio_existencias
+
+			; 
+			mov CX, 0001
+			mov BX, [handle_rep_sinexis]
+			mov AH, 40
+			int 21
+
+			inc DX  ;; <-- para que se vaya la siguiente byte 
+			inc SI  ;; <-- si se escribe algo en el arcribo, aumenta el contador 
+			jmp ciclo_escribir_descripcion_existencias
+
+		escribir_precio_existencias:
+			;
+			mov BX, [handle_rep_sinexis]
+			mov AH, 40
+			mov CH, 00
+			mov CL, [close_td_sz]
+			mov DX, offset cierre_td
+			int 21
+			;; <td>
+			mov BX, [handle_rep_sinexis]
+			mov AH, 40
+			mov CH, 00
+			mov CL, [open_td_sz]
+			mov DX, offset apertura_td
+			int 21
+			;
+			mov AX, [num_price]
+			call numAcadena
+
+			mov DX, offset numero
+			mov SI, 0000
+
+		ciclo_escribir_precio_existencias:: 
+			mov DI, DX
+			mov AL, [DI]
+			; nulo
+			cmp AL, 00
+			je cerrar_table
+			;llena 
+			cmp SI, 0006
+			je cerrar_table
+
+			;;write to fil
+			mov CX, 0001
+			mov BX, [handle_rep_sinexis]
+			mov AH, 40
+			int 21
+
+			inc DX  
+			inc SI   
+			jmp ciclo_escribir_precio_existencias
+
+		cerrar_table_existencias:
+			;; </td>
+			mov BX, [handle_rep_sinexis]
+			mov AH, 40
+			mov CH, 00
+			mov CL, [close_td_sz]
+			mov DX, offset cierre_td
+			int 21
+			;; </tr>
+			mov BX, [handle_rep_sinexis]
+			mov AH, 40
+			mov CH, 00
+			mov CL, [close_tr_sz]
+			mov DX, offset cierre_tr
+			int 21
+
+
+			ret
+					;	
 ;;
 
 ;; cadenaAnum
